@@ -32,11 +32,20 @@ sealed class SR2Event {
   }
 
   /**
-   * The current reading position changed.
+   * The reading position changed.
+   *
+   * @param chapterIndex
+   * @param chapterTitle
+   * @param currentPage
+   * @param pageCount
+   * @param percent
    */
 
   data class SR2ReadingPositionChanged(
     val chapterIndex: Int,
-    val progress: Double
+    val chapterTitle: String?,
+    val currentPage: Int,
+    val pageCount: Int,
+    val percent: Int
   ) : SR2Event()
 }

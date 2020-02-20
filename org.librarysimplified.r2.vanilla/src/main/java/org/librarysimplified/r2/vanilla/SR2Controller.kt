@@ -1,6 +1,7 @@
 package org.librarysimplified.r2.vanilla
 
 import android.webkit.WebView
+import androidx.annotation.IntRange
 import io.reactivex.Observable
 import io.reactivex.subjects.PublishSubject
 import org.librarysimplified.r2.api.SR2Command
@@ -15,10 +16,13 @@ import org.readium.r2.streamer.parser.EpubParser
 import org.readium.r2.streamer.server.Server
 import org.slf4j.LoggerFactory
 import java.io.IOException
+import java.lang.IllegalArgumentException
 import java.net.ServerSocket
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.annotation.concurrent.GuardedBy
+import kotlin.math.round
+import kotlin.math.roundToInt
 
 /**
  * The default R2 controller implementation.
@@ -144,7 +148,7 @@ class SR2Controller private constructor(
     index: Int
   ): String {
     require(index < this.publication.readingOrder.size) {
-      "Only indices in the range [0, ${this.publication.readingOrder.size}) are valid"
+      "index must be in [0, ${this.publication.readingOrder.size}]; was $index"
     }
 
     return buildString {
@@ -161,7 +165,8 @@ class SR2Controller private constructor(
   }
 
   private fun setCurrentChapter(index: Int) {
-    this.logger.debug("current chapter: {}", index)
+    val title = this.publication.readingOrder[index].title
+    this.logger.debug("current chapter $index, $title")
     this.currentChapterIndex = index
   }
 
@@ -219,9 +224,19 @@ class SR2Controller private constructor(
     targetIndex: Int,
     atEnd: Boolean
   ) {
+    val previousIndex = this.currentChapterIndex
+
     try {
       val location = this.locationOfSpineItem(targetIndex)
       this.logger.debug("opening location {}", location)
+
+      // Warning: The current chapter must be set before loading the spine location. The
+      // page will send a reading position changed event immediately on load, but before our
+      // callback returns. If we don't update the chapter index first we'll report the wrong
+      // chapter location in our SR2ReadingPositionChanged event. This is fragile and should
+      // be fixed later.
+      this.setCurrentChapter(targetIndex)
+
       this.openURL(
         location = location,
         onLoad = { webViewConnection ->
@@ -230,9 +245,9 @@ class SR2Controller private constructor(
           }
         }
       )
-      this.setCurrentChapter(targetIndex)
     } catch (e: Exception) {
       this.logger.error("unable to open chapter $targetIndex: ", e)
+      this.setCurrentChapter(previousIndex)
       this.eventSubject.onNext(
         SR2ChapterNonexistent(
           chapterIndex = targetIndex,
@@ -253,6 +268,38 @@ class SR2Controller private constructor(
     }
   }
 
+  /** Return the title of the current chapter. */
+
+  private fun getChapterTitle(): String? {
+    val chapter = this.publication.readingOrder[this.currentChapterIndex]
+
+    // The title is actually part of the table of contents; however, there may not be a
+    // one-to-one mapping between chapters and table of contents entries. We do a lookup
+    // based on the chapter href.
+
+    return this.publication.tableOfContents.firstOrNull {
+      it.href == chapter.href
+    }?.title
+  }
+
+  /**
+   * Return approximate book progress as percent completed.
+   *
+   * @param chapterProgress [0 - 1]
+   */
+
+  private fun getPercentComplete(chapterProgress: Double): Int {
+    require(chapterProgress > 1 || chapterProgress < 0) {
+      "progress must be in [0, 1]; was $chapterProgress"
+    }
+
+    val chapterCount = this.publication.readingOrder.size
+    val currentIndex = this.currentChapterIndex
+    val result = ((currentIndex + 1 * chapterProgress) / chapterCount)
+    logger.debug("$result = ($currentIndex + 1 * $chapterProgress) / $chapterCount")
+    return (result * 100).toInt()
+  }
+
   /**
    * A receiver that accepts calls from the Javascript code running inside the current
    * WebView.
@@ -264,24 +311,24 @@ class SR2Controller private constructor(
       LoggerFactory.getLogger(JavascriptAPIReceiver::class.java)
 
     @android.webkit.JavascriptInterface
-    override fun onChapterProgressionChanged(positionString: String) {
-      this.logger.debug("onChapterProgressionChanged: {}", positionString)
+    override fun onReadingPositionChanged(currentPage: Int, pageCount: Int) {
+      val chapterIndex = this@SR2Controller.currentChapterIndex
+      val chapterProgress = currentPage.toDouble() / pageCount.toDouble()
 
-      val position = try {
-        java.lang.Double.parseDouble(positionString)
-      } catch (e: Exception) {
-        this.logger.error("onChapterProgressionChanged: unable to parse progress value: ", e)
-        0.0
-      }
-
-      /*
-       * Publish a reading position event.
-       */
+      this.logger.debug(
+        "onReadingPositionChanged:"
+            + " chapterIndex=$chapterIndex,"
+            + " currentPage=$currentPage,"
+            + " pageCount=$pageCount,"
+      )
 
       this@SR2Controller.eventSubject.onNext(
         SR2Event.SR2ReadingPositionChanged(
-          chapterIndex = this@SR2Controller.currentChapterIndex,
-          progress = position
+          chapterIndex = chapterIndex,
+          chapterTitle = getChapterTitle(),
+          currentPage = currentPage,
+          pageCount = pageCount,
+          percent = getPercentComplete(chapterProgress)
         )
       )
     }

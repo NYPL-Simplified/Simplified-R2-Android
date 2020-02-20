@@ -9,19 +9,32 @@ window.addEventListener("load", function() { // on page load
     } else {
         console.log("last_known_scrollX_position " + last_known_scrollX_position);
     }
+    onReadingPositionChanged()
 }, false);
 
 var last_known_scrollX_position = 0;
 var last_known_scrollY_position = 0;
 var ticking = false;
 
+// Returns the page currently displayed for this chapter as an int [1 - n].
+var getCurrentPage = function() {
+    return Math.abs(window.scrollX / window.innerWidth) + 1;
+}
+
+// Returns the page count for this chapter as an int.
+var getPageCount = function() {
+    return Math.abs(document.scrollingElement.scrollWidth / window.innerWidth);
+}
+
 // Position in range [0 - 1].
-var update = function(position) {
-    let positionString = position.toString();
-    Android.onChapterProgressionChanged(positionString);
+var onReadingPositionChanged = function() {
+    var currentPage = getCurrentPage();
+    var pageCount = getPageCount();
+    console.log("current_page " + currentPage + ", page_count " + pageCount);
+    Android.onReadingPositionChanged(currentPage, pageCount);
 };
 
-function isScrollModeEnabled() {
+var isScrollModeEnabled = function() {
     return document.documentElement.style.getPropertyValue("--USER__scroll").toString().trim() == "readium-scroll-on";
 }
 
@@ -32,7 +45,7 @@ window.addEventListener("scroll", function() {
     console.log("last_known_scrollY_position " + last_known_scrollY_position);
     if (!ticking) {
         window.requestAnimationFrame(function() {
-            update(isScrollModeEnabled() ? last_known_scrollY_position : last_known_scrollX_position);
+            onReadingPositionChanged();
             ticking = false;
         });
     }
@@ -46,7 +59,7 @@ var scrollToPage = function(page) {
 
     document.scrollingElement.scrollLeft = snapOffset(offset);
     last_known_scrollX_position = window.scrollX / document.scrollingElement.scrollWidth;
-    update(last_known_scrollX_position);
+    onReadingPositionChanged();
 
     return document.scrollingElement.scrollLeft;
 };
@@ -58,6 +71,7 @@ var scrollToId = function(id) {
     var offset = Math.round(window.scrollX + elementOffset);
 
     document.scrollingElement.scrollLeft = snapOffset(offset);
+    onReadingPositionChanged();
 };
 
 // Position must be in the range [0 - 1], 0-100%.
@@ -70,7 +84,7 @@ var scrollToPosition = function(position) {
     var offset = document.scrollingElement.scrollWidth * position;
 
     document.scrollingElement.scrollLeft = snapOffset(offset);
-    update(position);
+    onReadingPositionChanged();
 };
 
 var scrollToEnd = function() {
@@ -82,6 +96,7 @@ var scrollToEnd = function() {
         document.scrollingElement.scrollTop = document.body.scrollHeight;
         window.scrollTo(0, document.body.scrollHeight);
     }
+    onReadingPositionChanged();
 };
 
 var scrollToStart = function() {
@@ -93,6 +108,7 @@ var scrollToStart = function() {
         document.scrollingElement.scrollTop = 0;
         window.scrollTo(0, 0);
     }
+    onReadingPositionChanged();
 };
 
 var scrollToPosition = function(position, dir) {
@@ -110,13 +126,12 @@ var scrollToPosition = function(position, dir) {
             offset = document.scrollingElement.scrollWidth * position;
         }
         document.scrollingElement.scrollLeft = snapOffset(offset);
-        update(position);
     } else {
         var offset = Math.round(document.body.scrollHeight * position);
         document.scrollingElement.scrollTop = offset;
         window.scrollTo(0, offset);
-        update(position);
     }
+    onReadingPositionChanged();
 };
 
 var scrollLeft = function() {
@@ -126,11 +141,10 @@ var scrollLeft = function() {
     if (offset >= 0) {
         document.scrollingElement.scrollLeft = snapOffset(offset);
         last_known_scrollX_position = window.scrollX / document.scrollingElement.scrollWidth;
-        update(last_known_scrollX_position);
+        onReadingPositionChanged();
         return "";
     } else {
         document.scrollingElement.scrollLeft = 0;
-        update(1.0);
         return "edge"; // Need to previousDocument.
     }
 };
@@ -176,19 +190,18 @@ var scrollRight = function() {
         var newScrollPos = window.scrollX / document.scrollingElement.scrollWidth;
         if ((newScrollPos - last_known_scrollX_position) > 0.001) {
             last_known_scrollX_position = window.scrollX / document.scrollingElement.scrollWidth;
-            update(last_known_scrollX_position);
+            onReadingPositionChanged();
         } else {
             var newoffset = Math.round(window.scrollX + window.innerWidth);
             document.scrollingElement.scrollLeft = snapOffset(newoffset);
             last_known_scrollX_position = window.scrollX / document.scrollingElement.scrollWidth;
-            update(last_known_scrollX_position);
+            onReadingPositionChanged();
         }
         return "";
     } else {
         console.log("else");
         document.scrollingElement.scrollLeft = scrollWidth;
         last_known_scrollX_position = scrollWidth;
-        update(0.0);
         return "edge"; // Need to nextDocument.
     }
 };
@@ -225,7 +238,6 @@ var scrollRightRTL = function() {
 // Snap the offset to the screen width (page width).
 var snapOffset = function(offset) {
     var value = offset + 1;
-
     return value - (value % window.innerWidth);
 };
 
@@ -234,13 +246,13 @@ var snapOffset = function(offset) {
 // For setting user setting.
 var setProperty = function(key, value) {
     var root = document.documentElement;
-
     root.style.setProperty(key, value);
+    onReadingPositionChanged();  // Changes may impact reading position or page count.
 };
 
 // For removing user setting.
 var removeProperty = function(key) {
     var root = document.documentElement;
-
     root.style.removeProperty(key);
+    onReadingPositionChanged();  // Changes may impact reading position or page count.
 };
