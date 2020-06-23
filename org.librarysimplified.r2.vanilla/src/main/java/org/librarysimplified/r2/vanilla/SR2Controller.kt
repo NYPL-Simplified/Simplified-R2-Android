@@ -12,7 +12,7 @@ import org.librarysimplified.r2.api.SR2Event.SR2Error.SR2ChapterNonexistent
 import org.librarysimplified.r2.api.SR2Event.SR2Error.SR2WebViewInaccessible
 import org.readium.r2.shared.Publication
 import org.readium.r2.streamer.container.Container
-import org.readium.r2.streamer.parser.EpubParser
+import org.readium.r2.streamer.parser.epub.EpubParser
 import org.readium.r2.streamer.server.Server
 import org.slf4j.LoggerFactory
 import java.io.IOException
