@@ -87,7 +87,7 @@ class SR2Controller private constructor(
       val port = this.fetchUnusedHTTPPort()
       this.logger.debug("server port: {}", port)
 
-      val server = Server(port)
+      val server = Server(port, configuration.context)
       this.logger.debug("starting server")
       server.start(5_000)
 
