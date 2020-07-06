@@ -4,14 +4,16 @@ import android.webkit.WebView
 import androidx.annotation.IntRange
 import io.reactivex.Observable
 import io.reactivex.subjects.PublishSubject
+import kotlinx.coroutines.runBlocking
 import org.librarysimplified.r2.api.SR2Command
 import org.librarysimplified.r2.api.SR2ControllerConfiguration
 import org.librarysimplified.r2.api.SR2ControllerType
 import org.librarysimplified.r2.api.SR2Event
 import org.librarysimplified.r2.api.SR2Event.SR2Error.SR2ChapterNonexistent
 import org.librarysimplified.r2.api.SR2Event.SR2Error.SR2WebViewInaccessible
-import org.readium.r2.shared.Publication
-import org.readium.r2.streamer.container.Container
+import org.readium.r2.shared.publication.Publication
+import org.readium.r2.shared.util.File
+import org.readium.r2.streamer.Streamer
 import org.readium.r2.streamer.parser.epub.EpubParser
 import org.readium.r2.streamer.server.Server
 import org.slf4j.LoggerFactory
@@ -33,7 +35,6 @@ class SR2Controller private constructor(
   private val port: Int,
   private val server: Server,
   private val publication: Publication,
-  private val container: Container,
   private val epubFileName: String
 ) : SR2ControllerType {
 
@@ -78,12 +79,20 @@ class SR2Controller private constructor(
       val bookFile = configuration.bookFile
       this.logger.debug("creating controller for {}", bookFile)
 
-      val box =
-        EpubParser().parse(bookFile.absolutePath)
-          ?: throw IOException("Failed to parse EPUB")
+      val streamer = Streamer(
+        context = configuration.context,
+        parsers = listOf(EpubParser()),
+        ignoreDefaultParsers = true,
+        contentProtections = listOf()
+      )
+      val file = File(bookFile.absolutePath)
+      val publication = runBlocking {
+        streamer.open(file, askCredentials = false)
+      }
+        .getOrNull()
+        ?: throw IOException("Failed to parse EPUB")
 
-      this.logger.debug("publication uri: {}", box.publication.baseUrl())
-      this.logger.debug("publication title: {}", box.publication.metadata.title)
+      this.logger.debug("publication title: {}", publication.metadata.title)
       val port = this.fetchUnusedHTTPPort()
       this.logger.debug("server port: {}", port)
 
@@ -91,27 +100,22 @@ class SR2Controller private constructor(
       this.logger.debug("starting server")
       server.start(5_000)
 
-      this.logger.debug("loading readium resources")
-      server.loadReadiumCSSResources(configuration.context.assets)
-      server.loadR2ScriptResources(configuration.context.assets)
-      server.loadR2FontResources(configuration.context.assets, configuration.context)
-
       this.logger.debug("loading epub into server")
       val epubName = "/${bookFile.name}"
       server.addEpub(
-        publication = box.publication,
-        container = box.container,
+        publication = publication,
+        container = null,
         fileName = epubName,
         userPropertiesPath = null
       )
+      this.logger.debug("publication uri: {}", Publication.localBaseUrlOf(epubName, port))
 
       this.logger.debug("server ready")
       return SR2Controller(
         configuration = configuration,
-        container = box.container,
         epubFileName = epubName,
         port = port,
-        publication = box.publication,
+        publication = publication,
         server = server
       )
     }

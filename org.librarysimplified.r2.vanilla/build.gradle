@@ -1,5 +1,6 @@
 dependencies {
   api libraries.kotlinStdlib
+  api libraries.kotlinCoroutines
   api libraries.nanoHTTPD
   api libraries.nanoHTTPDNanolets
   api libraries.r2Shared
