@@ -1,10 +1,10 @@
-package org.librarysimplified.r2.vanilla
+package org.librarysimplified.r2.vanilla.internal
 
 /**
  * Methods called from javascript running inside a WebView.
  */
 
-interface SR2JavascriptAPIReceiverType {
+internal interface SR2JavascriptAPIReceiverType {
 
   /**
    * The reading position has changed.

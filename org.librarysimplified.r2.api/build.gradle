@@ -1,5 +1,6 @@
 dependencies {
   api libraries.googleGuava
+  api libraries.jodaTime
   api libraries.kotlinStdlib
   api libraries.rxjava2
 }

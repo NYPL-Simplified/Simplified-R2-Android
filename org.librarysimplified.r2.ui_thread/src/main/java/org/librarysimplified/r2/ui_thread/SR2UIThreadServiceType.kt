@@ -1,4 +1,4 @@
-package org.librarysimplified.r2.vanilla
+package org.librarysimplified.r2.ui_thread
 
 import android.os.Handler
 import android.os.Looper
@@ -7,7 +7,7 @@ import android.os.Looper
  * A service to run functions on the Android UI thread.
  */
 
-interface UIThreadServiceType {
+interface SR2UIThreadServiceType {
 
   /**
    * Check that the current thread is the UI thread and raise [ ] if it isn't.

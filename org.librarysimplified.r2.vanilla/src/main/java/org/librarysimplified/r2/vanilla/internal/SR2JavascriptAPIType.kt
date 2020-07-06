@@ -1,4 +1,4 @@
-package org.librarysimplified.r2.vanilla
+package org.librarysimplified.r2.vanilla.internal
 
 import androidx.annotation.UiThread
 
@@ -6,19 +6,25 @@ import androidx.annotation.UiThread
  * The Javascript API exported by web views.
  */
 
-interface SR2JavascriptAPIType {
+internal interface SR2JavascriptAPIType {
 
-  /** Open the next page in the current chapter. */
+  /**
+   * Open the next page in the current chapter.
+   */
 
   @UiThread
   fun openPageNext()
 
-  /** Open the previous page in the current chapter. */
+  /**
+   * Open the previous page in the current chapter.
+   */
 
   @UiThread
   fun openPagePrevious()
 
-  /**  Open the final page in the current chapter. */
+  /**
+   * Open the final page in the current chapter.
+   */
 
   @UiThread
   fun openPageLast()
@@ -46,4 +52,11 @@ interface SR2JavascriptAPIType {
 
   @UiThread
   fun setTheme(value: ReaderTheme)
+
+  /**
+   * Set the current chapter position. This must be in the range [0, 1].
+   */
+
+  @UiThread
+  fun setProgression(progress: Double)
 }

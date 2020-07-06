@@ -1,4 +1,4 @@
-package org.librarysimplified.r2.vanilla
+package org.librarysimplified.r2.vanilla.internal
 
 import android.os.Build
 import android.webkit.WebResourceError
@@ -16,7 +16,7 @@ import java.util.concurrent.ConcurrentHashMap
  * functions when pages have loaded.
  */
 
-class SR2WebViewClient : WebViewClient() {
+internal class SR2WebViewClient : WebViewClient() {
 
   companion object {
     val emptyResponse = WebResourceResponse(

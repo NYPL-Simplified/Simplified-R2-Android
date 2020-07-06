@@ -131,7 +131,8 @@ var scrollToPosition = function(position, dir) {
         document.scrollingElement.scrollTop = offset;
         window.scrollTo(0, offset);
     }
-    onReadingPositionChanged();
+
+    scrollLeft();
 };
 
 var scrollLeft = function() {

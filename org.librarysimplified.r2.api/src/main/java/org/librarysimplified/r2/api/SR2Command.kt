@@ -9,13 +9,19 @@ package org.librarysimplified.r2.api
 sealed class SR2Command {
 
   /**
-   * Open the chapter with the given index.
+   * Reload whatever the controller opened last.
+   */
+
+  object Refresh : SR2Command()
+
+  /**
+   * Open the chapter using the given locator.
    *
    * @see [SR2Event.SR2Error.SR2ChapterNonexistent]
    */
 
   data class OpenChapter(
-    val chapterIndex: Int
+    val locator: SR2Locator
   ) : SR2Command()
 
   /**
@@ -57,4 +63,27 @@ sealed class SR2Command {
     val atEnd: Boolean
   ) : SR2Command()
 
+  /**
+   * Load a set of bookmarks into the controller. This merely has the effect of making
+   * the bookmarks available to the table of contents; it does not trigger any changes
+   * in navigation.
+   */
+
+  data class BookmarksLoad(
+    val bookmarks: List<SR2Bookmark>
+  ) : SR2Command()
+
+  /**
+   * Create a new (explicit) bookmark at the current reading position.
+   */
+
+  object BookmarkCreate : SR2Command()
+
+  /**
+   * Delete a specific bookmark.
+   */
+
+  data class BookmarkDelete(
+    val bookmark: SR2Bookmark
+  ) : SR2Command()
 }

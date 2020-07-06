@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-  <string name="progress_page">Page %1$d of %2$d</string>
-  <string name="progress_percent">%1$d%%</string>
-</resources>

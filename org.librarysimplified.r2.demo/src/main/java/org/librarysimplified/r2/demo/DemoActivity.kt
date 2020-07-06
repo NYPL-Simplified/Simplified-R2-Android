@@ -8,25 +8,30 @@ import android.os.Bundle
 import android.widget.Button
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import com.google.common.util.concurrent.ListeningExecutorService
-import com.google.common.util.concurrent.MoreExecutors
 import io.reactivex.disposables.Disposable
 import org.librarysimplified.r2.api.SR2Command
 import org.librarysimplified.r2.api.SR2ControllerProviderType
 import org.librarysimplified.r2.api.SR2ControllerType
 import org.librarysimplified.r2.api.SR2Event
+import org.librarysimplified.r2.api.SR2Event.SR2BookmarkEvent.SR2BookmarkCreated
+import org.librarysimplified.r2.api.SR2Event.SR2BookmarkEvent.SR2BookmarkDeleted
+import org.librarysimplified.r2.api.SR2Event.SR2BookmarkEvent.SR2BookmarksLoaded
+import org.librarysimplified.r2.api.SR2Event.SR2Error.SR2ChapterNonexistent
+import org.librarysimplified.r2.api.SR2Event.SR2Error.SR2WebViewInaccessible
+import org.librarysimplified.r2.api.SR2Event.SR2OnCenterTapped
+import org.librarysimplified.r2.api.SR2Event.SR2ReadingPositionChanged
+import org.librarysimplified.r2.ui_thread.SR2UIThread
 import org.librarysimplified.r2.vanilla.SR2Controllers
-import org.librarysimplified.r2.vanilla.UIThread
 import org.librarysimplified.r2.views.SR2ControllerHostType
 import org.librarysimplified.r2.views.SR2ReaderFragment
 import org.librarysimplified.r2.views.SR2ReaderFragmentParameters
+import org.librarysimplified.r2.views.SR2TOCFragment
 import org.slf4j.LoggerFactory
 import java.io.File
 import java.io.FileNotFoundException
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
-import java.util.concurrent.Executors
 
 class DemoActivity : AppCompatActivity(), SR2ControllerHostType {
 
@@ -35,14 +40,6 @@ class DemoActivity : AppCompatActivity(), SR2ControllerHostType {
   }
 
   private val logger = LoggerFactory.getLogger(DemoActivity::class.java)
-
-  private val ioExecutor =
-    MoreExecutors.listeningDecorator(Executors.newFixedThreadPool(1) { runnable ->
-      val thread = Thread(runnable)
-      thread.name = "org.librarysimplified.r2.demo.io"
-      thread
-    })
-
   private var epubFile: File? = null
   private var controller: SR2ControllerType? = null
   private var controllerSubscription: Disposable? = null
@@ -51,54 +48,69 @@ class DemoActivity : AppCompatActivity(), SR2ControllerHostType {
     super.onCreate(savedInstanceState)
 
     if (savedInstanceState == null) {
-      setContentView(R.layout.demo_activity)
+      this.setContentView(R.layout.demo_activity)
 
-      val browseButton = findViewById<Button>(R.id.browse_button)!!
-      browseButton.setOnClickListener { startDocumentPickerForResult() }
+      val browseButton = this.findViewById<Button>(R.id.browse_button)!!
+      browseButton.setOnClickListener { this.startDocumentPickerForResult() }
     }
   }
 
-  override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+  override fun onActivityResult(
+    requestCode: Int,
+    resultCode: Int,
+    data: Intent?
+  ) {
     when (requestCode) {
-      PICK_DOCUMENT -> onPickDocumentResult(resultCode, data)
+      PICK_DOCUMENT -> this.onPickDocumentResult(resultCode, data)
     }
   }
 
   override fun onResume() {
     super.onResume()
-    epubFile?.let { startReader(it) }
+    this.epubFile?.let { this.startReader(it) }
   }
 
   override fun onStop() {
     super.onStop()
-    controllerSubscription?.dispose()
+    this.controllerSubscription?.dispose()
   }
 
   override fun onControllerRequired(): SR2ControllerProviderType {
     return SR2Controllers()
   }
 
-  override fun onControllerBecameAvailable(controller: SR2ControllerType) {
+  override fun onControllerBecameAvailable(
+    controller: SR2ControllerType,
+    isFirstStartup: Boolean
+  ) {
     this.controller = controller
 
     // Listen for messages from the controller.
-    controllerSubscription =
-      controller.events.subscribe { event -> onControllerEvent(event) }
+    this.controllerSubscription =
+      controller.events.subscribe { event -> this.onControllerEvent(event) }
 
-    // Navigate to the first chapter or saved reading position.
-    controller.submitCommand(SR2Command.OpenChapter(0))
-  }
-
-  override fun onControllerWantsIOExecutor(): ListeningExecutorService {
-    return ioExecutor
+    if (isFirstStartup) {
+      // Navigate to the first chapter or saved reading position.
+      val database = DemoApplication.application.database()
+      val bookId = controller.bookMetadata.id
+      val lastRead = database.bookmarkFindLastReadLocation(bookId)
+      controller.submitCommand(SR2Command.BookmarksLoad(database.bookmarksFor(bookId)))
+      controller.submitCommand(SR2Command.OpenChapter(lastRead.locator))
+    } else {
+      // Refresh whatever the controller was looking at previously.
+      controller.submitCommand(SR2Command.Refresh)
+    }
   }
 
   override fun onNavigationClose() {
-    TODO("not implemented")
+    this.supportFragmentManager.popBackStack()
   }
 
   override fun onNavigationOpenTableOfContents() {
-    TODO("not implemented")
+    this.supportFragmentManager.beginTransaction()
+      .replace(R.id.readerContainer, SR2TOCFragment())
+      .addToBackStack(null)
+      .commit()
   }
 
   /**
@@ -113,7 +125,7 @@ class DemoActivity : AppCompatActivity(), SR2ControllerHostType {
         )
       )
 
-    supportFragmentManager.beginTransaction()
+    this.supportFragmentManager.beginTransaction()
       .replace(R.id.readerContainer, fragment)
       .commit()
   }
@@ -123,30 +135,47 @@ class DemoActivity : AppCompatActivity(), SR2ControllerHostType {
    */
 
   private fun onControllerEvent(event: SR2Event) {
-    when (event) {
-      is SR2Event.SR2Error.SR2ChapterNonexistent -> {
-        UIThread.runOnUIThread {
-          Toast.makeText(this, "Chapter nonexistent: ${event.chapterIndex}", Toast.LENGTH_SHORT)
-            .show()
+    return when (event) {
+      is SR2ChapterNonexistent -> {
+        SR2UIThread.runOnUIThread {
+          Toast.makeText(
+            this,
+            "Chapter nonexistent: ${event.chapterIndex}",
+            Toast.LENGTH_SHORT
+          ).show()
         }
       }
-      is SR2Event.SR2Error.SR2WebViewInaccessible -> {
-        UIThread.runOnUIThread {
-          Toast.makeText(this, "Web view inaccessible!", Toast.LENGTH_SHORT).show()
+
+      is SR2WebViewInaccessible -> {
+
+      }
+
+      is SR2OnCenterTapped -> {
+        SR2UIThread.runOnUIThread {
+          Toast.makeText(
+            this,
+            "Center tap!",
+            Toast.LENGTH_SHORT
+          ).show()
         }
       }
-      is SR2Event.SR2OnCenterTapped -> {
-        UIThread.runOnUIThread {
-          Toast.makeText(this, "Center tap!", Toast.LENGTH_SHORT).show()
-        }
+
+      is SR2ReadingPositionChanged -> {
+
       }
-      is SR2Event.SR2ReadingPositionChanged -> {
-        UIThread.runOnUIThread {
-          val percent = event.progress * 100.0
-          val percentText = String.format("%.2f", percent)
-          Toast.makeText(this, "Chapter ${event.chapterIndex}, $percentText%", Toast.LENGTH_SHORT)
-            .show()
-        }
+
+      is SR2BookmarkCreated -> {
+        val database = DemoApplication.application.database()
+        database.bookmarkSave(this.controller!!.bookMetadata.id, event.bookmark)
+      }
+
+      SR2BookmarksLoaded -> {
+
+      }
+
+      is SR2BookmarkDeleted -> {
+        val database = DemoApplication.application.database()
+        database.bookmarkDelete(this.controller!!.bookMetadata.id, event.bookmark)
       }
     }
   }
@@ -161,7 +190,7 @@ class DemoActivity : AppCompatActivity(), SR2ControllerHostType {
     if (resultCode == Activity.RESULT_OK) {
       intent?.data?.let { uri ->
         // This copy operation should be done on a worker thread; omitted for brevity.
-        epubFile = copyToStorage(uri)
+        this.epubFile = this.copyToStorage(uri)
       }
     }
   }
@@ -179,21 +208,21 @@ class DemoActivity : AppCompatActivity(), SR2ControllerHostType {
    */
 
   private fun copyToStorage(uri: Uri): File? {
-    val file = File(filesDir, "book.epub")
+    val file = File(this.filesDir, "book.epub")
     var ips: InputStream? = null
     var ops: OutputStream? = null
 
     try {
-      ips = contentResolver.openInputStream(uri)
+      ips = this.contentResolver.openInputStream(uri)
       ops = file.outputStream()
       ips.copyTo(ops)
       return file
     } catch (e: FileNotFoundException) {
-      logger.warn("File not found", e)
-      showError("File not found")
+      this.logger.warn("File not found", e)
+      this.showError("File not found")
     } catch (e: IOException) {
-      logger.warn("Error copying file", e)
-      showError("Error copying file")
+      this.logger.warn("Error copying file", e)
+      this.showError("Error copying file")
     } finally {
       ips?.close()
       ops?.close()
@@ -207,18 +236,18 @@ class DemoActivity : AppCompatActivity(), SR2ControllerHostType {
 
   private fun startDocumentPickerForResult() {
     val pickIntent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-      type = "*/*"
-      addCategory(Intent.CATEGORY_OPENABLE)
+      this.type = "*/*"
+      this.addCategory(Intent.CATEGORY_OPENABLE)
 
       // Filter by MIME type; Android versions prior to Marshmallow don't seem
       // to understand the 'application/epub+zip' MIME type.
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-        putExtra(
+        this.putExtra(
           Intent.EXTRA_MIME_TYPES,
           arrayOf("application/epub+zip")
         )
       }
     }
-    startActivityForResult(pickIntent, PICK_DOCUMENT)
+    this.startActivityForResult(pickIntent, PICK_DOCUMENT)
   }
 }

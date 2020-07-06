@@ -1,4 +1,4 @@
-package org.librarysimplified.r2.vanilla
+package org.librarysimplified.r2.vanilla.internal
 
 import android.webkit.ConsoleMessage
 import android.webkit.WebChromeClient
@@ -8,7 +8,7 @@ import org.slf4j.LoggerFactory
  * A web chrome client that provides logging.
  */
 
-class SR2WebChromeClient : WebChromeClient() {
+internal class SR2WebChromeClient : WebChromeClient() {
 
   private val logger =
     LoggerFactory.getLogger(SR2WebChromeClient::class.java)

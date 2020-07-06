@@ -18,12 +18,19 @@ class DemoApplication : MultiDexApplication() {
       get() = this.INSTANCE
   }
 
+  private lateinit var database: DemoDatabase
   private val logger = LoggerFactory.getLogger(DemoApplication::class.java)
+
+  fun database(): DemoDatabase {
+    return this.database
+  }
 
   override fun onCreate() {
     super.onCreate()
 
     this.configureLogging()
+    this.database = DemoDatabase(this)
+
     this.logger.debug("starting app: pid {}", android.os.Process.myPid())
     INSTANCE = this
 

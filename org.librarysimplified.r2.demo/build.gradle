@@ -1,4 +1,5 @@
 dependencies {
+  api libraries.androidXAppCompat
   api libraries.androidXMultidex
   api libraries.kotlinStdlib
 

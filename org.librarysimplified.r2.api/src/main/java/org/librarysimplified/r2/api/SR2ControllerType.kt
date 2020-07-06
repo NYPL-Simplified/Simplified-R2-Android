@@ -19,6 +19,12 @@ import java.io.Closeable
 interface SR2ControllerType : Closeable, SR2ControllerCommandQueueType {
 
   /**
+   * Information on the opened book.
+   */
+
+  val bookMetadata: SR2BookMetadata
+
+  /**
    * An observable stream of events relating to the currently open controller.
    */
 
@@ -43,4 +49,16 @@ interface SR2ControllerType : Closeable, SR2ControllerCommandQueueType {
 
   fun viewDisconnect()
 
+  /**
+   * The list of bookmarks currently loaded into the controller. This list is an immutable
+   * snapshots, and subsequent updates to bookmarks will not be reflected in the returned list.
+   */
+
+  fun bookmarksNow(): List<SR2Bookmark>
+
+  /**
+   * The current position of the reader.
+   */
+
+  fun positionNow(): SR2Locator
 }
