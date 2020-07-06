@@ -152,11 +152,7 @@ class SR2Controller private constructor(
     }
 
     return buildString {
-      this.append("http://127.0.0.1:")
-      this.append(this@SR2Controller.port)
-      this.append(this@SR2Controller.epubFileName)
-
-      val publication = this@SR2Controller.publication
+      this.append(Publication.localBaseUrlOf(this@SR2Controller.epubFileName, port))
       this.append(
         publication.readingOrder[index].href
           ?: throw IllegalStateException("Link to chapter $index is not present")
