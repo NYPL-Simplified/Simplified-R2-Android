@@ -7,16 +7,27 @@ import org.readium.r2.shared.fetcher.ResourceTry
 import org.readium.r2.shared.fetcher.mapCatching
 import org.readium.r2.shared.publication.Link
 import org.readium.r2.shared.publication.encryption.encryption
-import java.lang.Exception
+import org.slf4j.LoggerFactory
 
 internal class AcsDecryptor(private val rights: String) {
 
   companion object {
+
+    private val logger =
+      LoggerFactory.getLogger(AcsDecryptor::class.java)
+
     const val AcsAlgorithmCompressed = "http://www.w3.org/2001/04/xmlenc#aes128-cbc"
     const val AcsAlgorithmUncompressed = "http://ns.adobe.com/adept/xmlenc#aes128-cbc-uncompressed"
 
     init {
-      System.loadLibrary("AcsDecryptor")
+      logger.debug("attempting to load epub3 library")
+      System.loadLibrary("epub3")
+
+      logger.debug("attempting to load nypl_adobe library")
+      System.loadLibrary("nypl_adobe")
+
+      logger.debug("attempting to load nypl_adobe_filter DRM library")
+      System.loadLibrary("nypl_adobe_filter")
     }
   }
 
@@ -29,6 +40,7 @@ internal class AcsDecryptor(private val rights: String) {
     return@LazyResource try {
       AcsResource(resource, link, rights)
     } catch (e: Exception) {
+      logger.error("unable to instantiate AcsResource", e)
       FailureResource(link, Resource.Error.Forbidden)
     }
   }
