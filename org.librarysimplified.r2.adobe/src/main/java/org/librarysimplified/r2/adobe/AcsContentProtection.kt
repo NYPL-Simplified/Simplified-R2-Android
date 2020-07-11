@@ -47,35 +47,20 @@ class AcsContentProtection : ContentProtection {
         return null
     }
 
-    val encryptionProperties = fetcher.get("/META-INF/encryption.xml").readAsXml().fold(
+    val encryption = fetcher.get("/META-INF/encryption.xml").readAsXml()
+      .fold(
         {  AcsEncryptionParser.parse(it) },
         { return Try.failure(Publication.OpeningError.ParsingFailed(it)) }
       )
 
     val protectedFile = ContentProtection.ProtectedFile(
       file = file,
-      fetcher = TransformingFetcher(fetcher, AcsDecryptor(rights)::transform),
-      onCreateManifest = { _, manifest -> onCreateManifest(manifest, encryptionProperties) }
+      fetcher = TransformingFetcher(fetcher, AcsDecryptor(rights, encryption)::transform)
     )
 
     return Try.success(protectedFile)
   }
 
-  private fun onCreateManifest(manifest: Manifest, encryptionProperties: Map<String, Map<String, Any>>): Manifest {
 
-    fun Link.withEncryptionProperties(encryptionProperties: Map<String, Any>) =
-      copy(properties = Properties(properties.otherProperties + ("encrypted" to encryptionProperties)))
-
-    val readingOrder = manifest.readingOrder.map { link ->
-      encryptionProperties[link.href]?.let { link.withEncryptionProperties(it) }
-        ?: link
-    }
-    val resources = manifest.resources.map { link ->
-      encryptionProperties[link.href]?.let { link.withEncryptionProperties(it) }
-        ?: link
-    }
-
-    return manifest.copy(readingOrder = readingOrder, resources = resources)
-  }
 
 }

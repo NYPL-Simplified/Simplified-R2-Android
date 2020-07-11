@@ -9,16 +9,13 @@
 
 package org.librarysimplified.r2.adobe
 
-import org.readium.r2.shared.extensions.toMap
 import org.readium.r2.shared.normalize
 import org.readium.r2.shared.parser.xml.ElementNode
-import org.readium.r2.shared.publication.encryption.Encryption
 
 /**
  * AcsEncryptionParser parses Epub encryption.xml files with the following Adobe's extension :
- * every enc:EncryptedData node has a adept:resource child that contains an uri that is
- * request by ACS connector to instantiate a decryptor. This uri is called resourceId
- * in the link encryption properties map.
+ * every enc:EncryptedData node has an adept:resource child that contains an uri that is
+ * requested by ACS connector to instantiate a decryptor.
  */
 object AcsEncryptionParser {
 
@@ -29,16 +26,12 @@ object AcsEncryptionParser {
         const val ADEPT = "http://ns.adobe.com/adept"
     }
 
-    fun parse(document: ElementNode): Map<String, Map<String, Any>> =
+    fun parse(document: ElementNode): Map<String, AcsEncryptionProperties> =
         document.get("EncryptedData", Namespaces.ENC)
             .mapNotNull { parseEncryptedData(it) }
-            .associate {
-                val (href, resourceId, encryption) = it
-                val allProps = encryption.toJSON().toMap() + ("resourceId" to resourceId)
-                Pair(href,  allProps)
-            }
+            .toMap()
 
-    private fun parseEncryptedData(node: ElementNode): Triple<String, String, Encryption>? {
+    private fun parseEncryptedData(node: ElementNode): Pair<String, AcsEncryptionProperties>? {
         val resourceURI = node.getFirst("CipherData", Namespaces.ENC)
             ?.getFirst("CipherReference", Namespaces.ENC)?.getAttr("URI")
             ?: return null
@@ -53,16 +46,13 @@ object AcsEncryptionParser {
             ?.let { parseEncryptionProperties(it) }
         val originalLength = compression?.first
         val compressionMethod = compression?.second
-        val enc = Encryption(
+        val enc = AcsEncryptionProperties(
             algorithm = algorithm,
+            resourceId = resourceId,
             compression = compressionMethod,
             originalLength = originalLength
         )
-        return Triple(
-            normalize("/", resourceURI),
-            resourceId,
-            enc
-        )
+        return Pair(normalize("/", resourceURI), enc)
     }
 
     private fun parseEncryptionProperties(encryptionProperties: ElementNode): Pair<Long, String>? {

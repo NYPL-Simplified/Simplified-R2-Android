@@ -6,15 +6,13 @@ import org.readium.r2.shared.fetcher.Resource
 import org.readium.r2.shared.fetcher.ResourceTry
 import org.readium.r2.shared.fetcher.mapCatching
 import org.readium.r2.shared.publication.Link
-import org.readium.r2.shared.publication.encryption.encryption
 import org.slf4j.LoggerFactory
 
-internal class AcsDecryptor(private val rights: String) {
+internal class AcsDecryptor(private val rights: String, private val encryption: Map<String, AcsEncryptionProperties>) {
 
   companion object {
 
-    private val logger =
-      LoggerFactory.getLogger(AcsDecryptor::class.java)
+    private val logger = LoggerFactory.getLogger(AcsDecryptor::class.java)
 
     const val AcsAlgorithmCompressed = "http://www.w3.org/2001/04/xmlenc#aes128-cbc"
     const val AcsAlgorithmUncompressed = "http://ns.adobe.com/adept/xmlenc#aes128-cbc-uncompressed"
@@ -23,32 +21,29 @@ internal class AcsDecryptor(private val rights: String) {
 
   fun transform(resource: Resource): Resource = LazyResource {
     val link = resource.link()
-    val encryption = link.properties.encryption
-    if (encryption == null || encryption.algorithm !in listOf(AcsAlgorithmCompressed, AcsAlgorithmUncompressed))
+    val encryptionProps = encryption[link.href]
+    if (encryptionProps == null || encryptionProps.algorithm !in listOf(AcsAlgorithmCompressed, AcsAlgorithmUncompressed))
       return@LazyResource resource
 
     return@LazyResource try {
-      AcsResource(resource, link, rights)
+      logger.debug("initializing a resource for href ${link.href}")
+      AcsResource(resource, encryptionProps)
     } catch (e: Exception) {
       logger.error("unable to instantiate an AcsResource", e)
       FailureResource(link, Resource.Error.Forbidden)
     }
   }
 
-  private inner class AcsResource(private val resource: Resource, private val link: Link, rights: String) : Resource {
+  private inner class AcsResource(private val resource: Resource, private val encryption: AcsEncryptionProperties) : Resource {
 
     private val decryptorPtr: Long
     private var isClosed: Boolean = false
 
     init {
-      val encryption = requireNotNull(link.properties.encryption)
-      logger.debug("initializing a resource for href ${link.href}")
       logger.debug("resource is encrypted with ${encryption.algorithm}")
       logger.debug("originalLength is ${encryption.originalLength}")
 
-      val resourceId = requireNotNull((link.properties["encrypted"] as? Map<*, *>)?.get("resourceId") as? String)
-        { "Missing resource id in encryption properties." }
-        .toByteArray()
+      val resourceId = requireNotNull(encryption.resourceId).toByteArray()
       val algoName = encryption.algorithm.toByteArray()
       val originalLength = encryption.originalLength
         ?.takeIf { it in Int.MIN_VALUE..Int.MAX_VALUE }
@@ -63,14 +58,15 @@ internal class AcsDecryptor(private val rights: String) {
       logger.debug(decryptorPtr.toString())
     }
 
-    override suspend fun link(): Link = link
+    override suspend fun link(): Link = resource.link()
 
     override suspend fun read(range: LongRange?): ResourceTry<ByteArray> {
       check(!isClosed) { "Resource is closed." }
 
       return resource.read(range).mapCatching {
         readThroughDecryptor(decryptorPtr, it, range?.start, range?.last)
-          ?: throw Exception("Unable to decrypt data with ACS Connector.")
+          ?.takeIf { it.isNotEmpty() }
+          ?: throw Resource.Error.Forbidden
       }
     }
 
