@@ -19,16 +19,6 @@ internal class AcsDecryptor(private val rights: String) {
     const val AcsAlgorithmCompressed = "http://www.w3.org/2001/04/xmlenc#aes128-cbc"
     const val AcsAlgorithmUncompressed = "http://ns.adobe.com/adept/xmlenc#aes128-cbc-uncompressed"
 
-    init {
-      logger.debug("attempting to load epub3 library")
-      System.loadLibrary("epub3")
-
-      logger.debug("attempting to load nypl_adobe library")
-      System.loadLibrary("nypl_adobe")
-
-      logger.debug("attempting to load nypl_adobe_filter DRM library")
-      System.loadLibrary("nypl_adobe_filter")
-    }
   }
 
   fun transform(resource: Resource): Resource = LazyResource {
