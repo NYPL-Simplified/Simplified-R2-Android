@@ -40,27 +40,37 @@ internal class AcsDecryptor(private val rights: String) {
     return@LazyResource try {
       AcsResource(resource, link, rights)
     } catch (e: Exception) {
-      logger.error("unable to instantiate AcsResource", e)
+      logger.error("unable to instantiate an AcsResource", e)
       FailureResource(link, Resource.Error.Forbidden)
     }
   }
 
-  private class AcsResource(private val resource: Resource, private val link: Link, rights: String) : Resource {
+  private inner class AcsResource(private val resource: Resource, private val link: Link, rights: String) : Resource {
 
-    private val encryption = requireNotNull(link.properties.encryption)
     private val decryptorPtr: Long
     private var isClosed: Boolean = false
 
     init {
-      val uri = link.href.toByteArray()
-      val algo = encryption.algorithm.toByteArray()
-      val length = encryption.originalLength
+      val encryption = requireNotNull(link.properties.encryption)
+      logger.debug("initializing a resource for href ${link.href}")
+      logger.debug("resource is encrypted with ${encryption.algorithm}")
+      logger.debug("originalLength is ${encryption.originalLength}")
+
+      val resourceId = requireNotNull((link.properties["encrypted"] as? Map<*, *>)?.get("resourceId") as? String)
+        { "Missing resource id in encryption properties." }
+        .toByteArray()
+      val algoName = encryption.algorithm.toByteArray()
+      val originalLength = encryption.originalLength
         ?.takeIf { it in Int.MIN_VALUE..Int.MAX_VALUE }
         ?.toInt()
         ?: 0
 
-      decryptorPtr = createDecryptor(uri, algo, length, rights.toByteArray())
-        ?: throw Exception("Unable to instantiate an ACS Decryptor.")
+      decryptorPtr = createDecryptor(resourceId, algoName, originalLength, rights.toByteArray())
+      if (decryptorPtr == 0L)
+        throw Exception("Unable to instantiate an ACS Decryptor.")
+
+      logger.debug("decryptorPtr")
+      logger.debug(decryptorPtr.toString())
     }
 
     override suspend fun link(): Link = link
@@ -75,21 +85,24 @@ internal class AcsDecryptor(private val rights: String) {
     }
 
     override suspend fun length(): ResourceTry<Long> =
-      read().map { it.size.toLong() }
+      resource.length() //read().map { it.size.toLong() }
 
     override suspend fun close() {
       if (isClosed)
         return
 
+      resource.close()
       deleteDecryptor(decryptorPtr)
       isClosed = true
     }
   }
 
+  // Although they might be static, native methods are kept inside the class to avoid weird JNI names.
+
+  external fun createDecryptor(resourceId: ByteArray, algoName: ByteArray, originalLength: Int, rights: ByteArray): Long
+
+  external fun readThroughDecryptor(decryptorPtr: Long, data: ByteArray, start: Long?, end: Long?): ByteArray?
+
+  external fun deleteDecryptor(decryptorPtr: Long)
+
 }
-
-external fun createDecryptor(uri: ByteArray, algo: ByteArray, length: Int, rights: ByteArray): Long?
-
-external fun readThroughDecryptor(decryptorPtr: Long, data: ByteArray, start: Long?, end: Long?): ByteArray?
-
-external fun deleteDecryptor(decryptorPtr: Long)
