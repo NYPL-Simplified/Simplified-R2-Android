@@ -26,11 +26,13 @@ internal class AcsDecryptor(private val rights: String, private val encryption: 
       return@LazyResource resource
 
     return@LazyResource try {
-      logger.debug("initializing a resource for href ${link.href}")
       AcsResource(resource, encryptionProps)
     } catch (e: Exception) {
       logger.error("unable to instantiate an AcsResource", e)
       FailureResource(link, Resource.Error.Forbidden)
+    } catch(e: UnsatisfiedLinkError) {
+      logger.error("DRM is not supported")
+      resource
     }
   }
 
@@ -40,15 +42,9 @@ internal class AcsDecryptor(private val rights: String, private val encryption: 
     private var isClosed: Boolean = false
 
     init {
-      logger.debug("resource is encrypted with ${encryption.algorithm}")
-      logger.debug("originalLength is ${encryption.originalLength}")
-
       val resourceId = requireNotNull(encryption.resourceId).toByteArray()
       val algoName = encryption.algorithm.toByteArray()
-      val originalLength = encryption.originalLength
-        ?.takeIf { it in Int.MIN_VALUE..Int.MAX_VALUE }
-        ?.toInt()
-        ?: 0
+      val originalLength = encryption.originalLength ?: 0
 
       decryptorPtr = createDecryptor(resourceId, algoName, originalLength, rights.toByteArray())
       if (decryptorPtr == 0L)
@@ -85,7 +81,7 @@ internal class AcsDecryptor(private val rights: String, private val encryption: 
 
   // Although they might be static, native methods are kept inside the class to avoid weird JNI names.
 
-  external fun createDecryptor(resourceId: ByteArray, algoName: ByteArray, originalLength: Int, rights: ByteArray): Long
+  external fun createDecryptor(resourceId: ByteArray, algoName: ByteArray, originalLength: Long, rights: ByteArray): Long
 
   external fun readThroughDecryptor(decryptorPtr: Long, data: ByteArray, start: Long?, end: Long?): ByteArray?
 
