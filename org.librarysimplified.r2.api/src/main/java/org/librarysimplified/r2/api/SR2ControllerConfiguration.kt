@@ -17,6 +17,13 @@ data class SR2ControllerConfiguration(
   val bookFile: File,
 
   /**
+   * The file containing Adobe DRM rights information.
+   */
+
+  val adobeRightsFile: File?,
+
+
+  /**
    * The current Android application context.
    */
 

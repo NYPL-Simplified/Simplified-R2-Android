@@ -148,6 +148,7 @@ class SR2ReaderFragment : Fragment() {
       this.readerModel.createOrGet(
         configuration = SR2ControllerConfiguration(
           bookFile = this.parameters.bookFile,
+          adobeRightsFile = this.parameters.adobeRightsFile,
           context = activity,
           ioExecutor = this.readerModel.ioExecutor,
           uiExecutor = SR2UIThread::runOnUIThread

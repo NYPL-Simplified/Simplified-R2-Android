@@ -4,26 +4,13 @@ import org.readium.r2.shared.fetcher.Fetcher
 import org.readium.r2.shared.fetcher.TransformingFetcher
 import org.readium.r2.shared.format.Format
 import org.readium.r2.shared.publication.ContentProtection
-import org.readium.r2.shared.publication.Link
-import org.readium.r2.shared.publication.Manifest
 import org.readium.r2.shared.publication.OnAskCredentials
-import org.readium.r2.shared.publication.Properties
 import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.util.File
 import org.readium.r2.shared.util.Try
-import org.slf4j.LoggerFactory
 import java.nio.charset.Charset
 
 class AcsContentProtection : ContentProtection {
-
-  companion object {
-
-    private val logger =
-      LoggerFactory.getLogger(AcsContentProtection::class.java)
-
-  }
-
-  private val RIGHTS_XML_SUFFIX = "_rights.xml"
 
   override suspend fun open(
     file: File,
@@ -34,22 +21,20 @@ class AcsContentProtection : ContentProtection {
     onAskCredentials: OnAskCredentials?
   ): Try<ContentProtection.ProtectedFile, Publication.OpeningError>? {
 
-    if (file.format() != Format.EPUB)
+    val adobeRightsFile = (file as?  AcsReadiumFile)?.adobeRightsFile
+
+    if (file.format() != Format.EPUB || adobeRightsFile == null)
       return null
 
     val rights = try {
-        //File(file.path + RIGHTS_XML_SUFFIX).file.readText(Charset.defaultCharset())
-        val pubDir = file.file.parentFile
-        java.io.File(pubDir,"epub-rights_adobe.xml").readText(Charset.defaultCharset())
+      adobeRightsFile.readText(Charset.defaultCharset())
     } catch (e: Exception) {
-        logger.info("no rights file found")
-        file.file.parentFile.walk().forEach { logger.debug(it.path) }
-        return null
+      return Try.failure(Publication.OpeningError.ParsingFailed(e))
     }
 
     val encryption = fetcher.get("/META-INF/encryption.xml").readAsXml()
       .fold(
-        {  AcsEncryptionParser.parse(it) },
+        { AcsEncryptionParser.parse(it) },
         { return Try.failure(Publication.OpeningError.ParsingFailed(it)) }
       )
 
@@ -60,7 +45,5 @@ class AcsContentProtection : ContentProtection {
 
     return Try.success(protectedFile)
   }
-
-
 
 }

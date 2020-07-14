@@ -6,6 +6,7 @@ import io.reactivex.subjects.PublishSubject
 import kotlinx.coroutines.runBlocking
 import org.joda.time.DateTime
 import org.librarysimplified.r2.adobe.AcsContentProtection
+import org.librarysimplified.r2.adobe.AcsReadiumFile
 import org.librarysimplified.r2.api.SR2BookChapter
 import org.librarysimplified.r2.api.SR2BookMetadata
 import org.librarysimplified.r2.api.SR2Bookmark
@@ -27,7 +28,7 @@ import org.librarysimplified.r2.api.SR2Locator.SR2LocatorPercent
 import org.librarysimplified.r2.vanilla.internal.SR2CommandInternal.SR2CommandInternalAPI
 import org.librarysimplified.r2.vanilla.internal.SR2CommandInternal.SR2CommandInternalDelay
 import org.readium.r2.shared.publication.Publication
-import org.readium.r2.shared.util.File
+import org.readium.r2.shared.util.getOrElse
 import org.readium.r2.streamer.Streamer
 import org.readium.r2.streamer.parser.epub.EpubParser
 import org.readium.r2.streamer.server.Server
@@ -90,6 +91,7 @@ internal class SR2Controller private constructor(
       configuration: SR2ControllerConfiguration
     ): SR2ControllerType {
       val bookFile = configuration.bookFile
+      val adobeRightsFile = configuration.adobeRightsFile
       this.logger.debug("creating controller for {}", bookFile)
 
       val streamer = Streamer(
@@ -98,13 +100,12 @@ internal class SR2Controller private constructor(
         ignoreDefaultParsers = true,
         contentProtections = listOf(AcsContentProtection())
       )
-      val file = File(bookFile.absolutePath)
+      val file = AcsReadiumFile(bookFile, adobeRightsFile)
       val publication = runBlocking {
         streamer.open(file, askCredentials = false)
+      }.getOrElse {
+        throw IOException("Failed to open EPUB", it)
       }
-        .getOrNull()
-        ?: throw IOException("Failed to parse EPUB")
-
 
       this.logger.debug("publication title: {}", publication.metadata.title)
       val port = this.fetchUnusedHTTPPort()

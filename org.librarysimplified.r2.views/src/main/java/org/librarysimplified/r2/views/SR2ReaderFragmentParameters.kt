@@ -13,5 +13,12 @@ data class SR2ReaderFragmentParameters(
    * The file containing the book to be opened.
    */
 
-  val bookFile: File
+  val bookFile: File,
+
+  /**
+   * The file containing Adobe DRM rights information.
+   */
+
+  val adobeRightsFile: File?
+
 ) : Serializable
