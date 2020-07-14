@@ -1,5 +1,6 @@
 package org.librarysimplified.r2.adobe
 
+import org.readium.r2.shared.fetcher.BytesResource
 import org.readium.r2.shared.fetcher.FailureResource
 import org.readium.r2.shared.fetcher.LazyResource
 import org.readium.r2.shared.fetcher.Resource
@@ -43,7 +44,39 @@ internal class AdobeAdeptDecryptor(private val rights: String, private val encry
     }
   }
 
-  private inner class FullAdeptResource(private val resource: Resource, private val encryption: AdobeAdeptEncryptionProperties) : Resource {
+  private inner class FullAdeptResource(
+    private val resource: Resource,
+    private val encryption: AdobeAdeptEncryptionProperties
+  ) : BytesResource( {
+
+    val resourceId = requireNotNull(encryption.resourceId).toByteArray()
+    val algoName = encryption.algorithm.toByteArray()
+    val originalLength = encryption.originalLength ?: 0
+
+    val bytes = resource.read().mapCatching {
+      val decryptorPtr = createDecryptor(resourceId, algoName, originalLength, rights.toByteArray())
+      if (decryptorPtr == 0L)
+        throw Resource.Error.Forbidden
+
+      readThroughDecryptor(decryptorPtr, it, isStart = true, isEnd = true)
+        .also {  deleteDecryptor(decryptorPtr) }
+        .takeIf { it.isNotEmpty() }
+        ?: throw Resource.Error.Forbidden
+    }
+
+    Pair(resource.link(), bytes)
+
+  } ) {
+
+    override suspend fun length(): ResourceTry<Long> =
+      encryption.originalLength
+        ?.let { Try.success(it) }
+        ?: super.length()
+
+    override suspend fun close() = resource.close()
+  }
+
+  private inner class CbcAdeptResource(private val resource: Resource, private val encryption: AdobeAdeptEncryptionProperties) : Resource {
 
     private val decryptorPtr: Long
     private var isClosed: Boolean = false
