@@ -17,7 +17,7 @@ import org.readium.r2.shared.parser.xml.ElementNode
  * every enc:EncryptedData node has an adept:resource child that contains an uri that is
  * requested by ACS connector to instantiate a decryptor.
  */
-object AcsEncryptionParser {
+object AdobeAdeptEncryptionParser {
 
     object Namespaces {
         const val ENC = "http://www.w3.org/2001/04/xmlenc#"
@@ -26,12 +26,12 @@ object AcsEncryptionParser {
         const val ADEPT = "http://ns.adobe.com/adept"
     }
 
-    fun parse(document: ElementNode): Map<String, AcsEncryptionProperties> =
+    fun parse(document: ElementNode): Map<String, AdobeAdeptEncryptionProperties> =
         document.get("EncryptedData", Namespaces.ENC)
             .mapNotNull { parseEncryptedData(it) }
             .toMap()
 
-    private fun parseEncryptedData(node: ElementNode): Pair<String, AcsEncryptionProperties>? {
+    private fun parseEncryptedData(node: ElementNode): Pair<String, AdobeAdeptEncryptionProperties>? {
         val resourceURI = node.getFirst("CipherData", Namespaces.ENC)
             ?.getFirst("CipherReference", Namespaces.ENC)?.getAttr("URI")
             ?: return null
@@ -46,7 +46,7 @@ object AcsEncryptionParser {
             ?.let { parseEncryptionProperties(it) }
         val originalLength = compression?.first
         val compressionMethod = compression?.second
-        val enc = AcsEncryptionProperties(
+        val enc = AdobeAdeptEncryptionProperties(
             algorithm = algorithm,
             resourceId = resourceId,
             compression = compressionMethod,

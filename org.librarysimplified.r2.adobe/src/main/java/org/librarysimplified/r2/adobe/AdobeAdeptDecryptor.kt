@@ -11,21 +11,21 @@ import org.slf4j.LoggerFactory
 import java.io.ByteArrayOutputStream
 import kotlin.math.ceil
 
-internal class AcsDecryptor(private val rights: String, private val encryption: Map<String, AcsEncryptionProperties>) {
+internal class AdobeAdeptDecryptor(private val rights: String, private val encryption: Map<String, AdobeAdeptEncryptionProperties>) {
 
   companion object {
 
-    private val logger = LoggerFactory.getLogger(AcsDecryptor::class.java)
+    private val logger = LoggerFactory.getLogger(AdobeAdeptDecryptor::class.java)
 
-    const val AcsAlgorithmCompressed = "http://www.w3.org/2001/04/xmlenc#aes128-cbc"
-    const val AcsAlgorithmUncompressed = "http://ns.adobe.com/adept/xmlenc#aes128-cbc-uncompressed"
+    const val AdeptAlgorithmCompressed = "http://www.w3.org/2001/04/xmlenc#aes128-cbc"
+    const val AdeptAlgorithmUncompressed = "http://ns.adobe.com/adept/xmlenc#aes128-cbc-uncompressed"
 
   }
 
   fun transform(resource: Resource): Resource = LazyResource {
     val link = resource.link()
     val encryptionProps = encryption[link.href]
-    if (encryptionProps == null || encryptionProps.algorithm !in listOf(AcsAlgorithmCompressed, AcsAlgorithmUncompressed))
+    if (encryptionProps == null || encryptionProps.algorithm !in listOf(AdeptAlgorithmCompressed, AdeptAlgorithmUncompressed))
       return@LazyResource resource
 
     return@LazyResource try {
@@ -33,7 +33,7 @@ internal class AcsDecryptor(private val rights: String, private val encryption: 
       logger.debug("href is ${link.href}")
       logger.debug("algorithm is ${encryptionProps.algorithm}")
       logger.debug("originalLength is ${encryptionProps.originalLength}")
-      AcsResource(resource, encryptionProps)
+      FullAdeptResource(resource, encryptionProps)
     } catch (e: Exception) {
       logger.error("unable to instantiate an AcsResource", e)
       FailureResource(link, Resource.Error.Forbidden)
@@ -43,7 +43,7 @@ internal class AcsDecryptor(private val rights: String, private val encryption: 
     }
   }
 
-  private inner class AcsResource(private val resource: Resource, private val encryption: AcsEncryptionProperties) : Resource {
+  private inner class FullAdeptResource(private val resource: Resource, private val encryption: AdobeAdeptEncryptionProperties) : Resource {
 
     private val decryptorPtr: Long
     private var isClosed: Boolean = false

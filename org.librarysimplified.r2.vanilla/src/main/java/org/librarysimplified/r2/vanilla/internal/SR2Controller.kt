@@ -5,8 +5,8 @@ import io.reactivex.Observable
 import io.reactivex.subjects.PublishSubject
 import kotlinx.coroutines.runBlocking
 import org.joda.time.DateTime
-import org.librarysimplified.r2.adobe.AcsContentProtection
-import org.librarysimplified.r2.adobe.AcsReadiumFile
+import org.librarysimplified.r2.adobe.AdobeAdeptContentProtection
+import org.librarysimplified.r2.adobe.AdobeAdeptProtectedFile
 import org.librarysimplified.r2.api.SR2BookChapter
 import org.librarysimplified.r2.api.SR2BookMetadata
 import org.librarysimplified.r2.api.SR2Bookmark
@@ -98,9 +98,9 @@ internal class SR2Controller private constructor(
         context = configuration.context,
         parsers = listOf(EpubParser()),
         ignoreDefaultParsers = true,
-        contentProtections = listOf(AcsContentProtection())
+        contentProtections = listOf(AdobeAdeptContentProtection())
       )
-      val file = AcsReadiumFile(bookFile, adobeRightsFile)
+      val file = AdobeAdeptProtectedFile(bookFile, adobeRightsFile)
       val publication = runBlocking {
         streamer.open(file, askCredentials = false)
       }.getOrElse {

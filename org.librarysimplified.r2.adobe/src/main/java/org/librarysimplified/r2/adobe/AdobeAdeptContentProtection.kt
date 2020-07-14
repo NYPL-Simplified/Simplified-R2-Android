@@ -10,7 +10,7 @@ import org.readium.r2.shared.util.File
 import org.readium.r2.shared.util.Try
 import java.nio.charset.Charset
 
-class AcsContentProtection : ContentProtection {
+class AdobeAdeptContentProtection : ContentProtection {
 
   override suspend fun open(
     file: File,
@@ -21,7 +21,7 @@ class AcsContentProtection : ContentProtection {
     onAskCredentials: OnAskCredentials?
   ): Try<ContentProtection.ProtectedFile, Publication.OpeningError>? {
 
-    val adobeRightsFile = (file as?  AcsReadiumFile)?.adobeRightsFile
+    val adobeRightsFile = (file as? AdobeAdeptProtectedFile)?.adobeRightsFile
 
     if (file.format() != Format.EPUB || adobeRightsFile == null)
       return null
@@ -34,13 +34,13 @@ class AcsContentProtection : ContentProtection {
 
     val encryption = fetcher.get("/META-INF/encryption.xml").readAsXml()
       .fold(
-        { AcsEncryptionParser.parse(it) },
+        { AdobeAdeptEncryptionParser.parse(it) },
         { return Try.failure(Publication.OpeningError.ParsingFailed(it)) }
       )
 
     val protectedFile = ContentProtection.ProtectedFile(
       file = file,
-      fetcher = TransformingFetcher(fetcher, AcsDecryptor(rights, encryption)::transform)
+      fetcher = TransformingFetcher(fetcher, AdobeAdeptDecryptor(rights, encryption)::transform)
     )
 
     return Try.success(protectedFile)
