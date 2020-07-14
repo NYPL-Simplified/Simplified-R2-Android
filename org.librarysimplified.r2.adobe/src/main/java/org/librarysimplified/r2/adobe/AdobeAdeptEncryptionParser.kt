@@ -17,7 +17,7 @@ import org.readium.r2.shared.parser.xml.ElementNode
  * every enc:EncryptedData node has an adept:resource child that contains an uri that is
  * requested by ACS connector to instantiate a decryptor.
  */
-object AdobeAdeptEncryptionParser {
+internal object AdobeAdeptEncryptionParser {
 
     object Namespaces {
         const val ENC = "http://www.w3.org/2001/04/xmlenc#"

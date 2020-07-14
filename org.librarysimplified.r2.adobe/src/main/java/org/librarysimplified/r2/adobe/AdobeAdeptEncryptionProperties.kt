@@ -1,6 +1,6 @@
 package org.librarysimplified.r2.adobe
 
-data class AdobeAdeptEncryptionProperties(
+internal data class AdobeAdeptEncryptionProperties(
     val algorithm: String,
     val resourceId: String,
     val compression: String?,
