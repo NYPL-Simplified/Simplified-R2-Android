@@ -121,7 +121,8 @@ class DemoActivity : AppCompatActivity(), SR2ControllerHostType {
     val fragment =
       SR2ReaderFragment.create(
         SR2ReaderFragmentParameters(
-          bookFile = file
+          bookFile = file,
+          adobeRightsFile = null
         )
       )
 
