@@ -1,5 +1,6 @@
-package org.librarysimplified.r2.adobe
+package org.librarysimplified.r2.drm.adobe
 
+import org.librarysimplified.r2.drm.core.DrmProtectedFile
 import org.readium.r2.shared.fetcher.Fetcher
 import org.readium.r2.shared.fetcher.TransformingFetcher
 import org.readium.r2.shared.format.Format
@@ -21,13 +22,13 @@ class AdobeAdeptContentProtection : ContentProtection {
     onAskCredentials: OnAskCredentials?
   ): Try<ContentProtection.ProtectedFile, Publication.OpeningError>? {
 
-    val adobeRightsFile = (file as? AdobeAdeptProtectedFile)?.adobeRightsFile
+    val adobeRightsFile = (file as? DrmProtectedFile)?.adobeRightsFile
 
     if (file.format() != Format.EPUB || adobeRightsFile == null)
       return null
 
     val rights = try {
-      adobeRightsFile.readText(Charset.defaultCharset())
+      adobeRightsFile.readText(Charsets.UTF_8)
     } catch (e: Exception) {
       return Try.failure(Publication.OpeningError.ParsingFailed(e))
     }

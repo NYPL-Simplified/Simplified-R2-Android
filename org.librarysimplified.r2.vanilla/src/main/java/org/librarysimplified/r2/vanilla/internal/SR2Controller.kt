@@ -5,8 +5,6 @@ import io.reactivex.Observable
 import io.reactivex.subjects.PublishSubject
 import kotlinx.coroutines.runBlocking
 import org.joda.time.DateTime
-import org.librarysimplified.r2.adobe.AdobeAdeptContentProtection
-import org.librarysimplified.r2.adobe.AdobeAdeptProtectedFile
 import org.librarysimplified.r2.api.SR2BookChapter
 import org.librarysimplified.r2.api.SR2BookMetadata
 import org.librarysimplified.r2.api.SR2Bookmark
@@ -25,8 +23,10 @@ import org.librarysimplified.r2.api.SR2Event.SR2ReadingPositionChanged
 import org.librarysimplified.r2.api.SR2Locator
 import org.librarysimplified.r2.api.SR2Locator.SR2LocatorChapterEnd
 import org.librarysimplified.r2.api.SR2Locator.SR2LocatorPercent
+import org.librarysimplified.r2.drm.core.DrmProtectedFile
 import org.librarysimplified.r2.vanilla.internal.SR2CommandInternal.SR2CommandInternalAPI
 import org.librarysimplified.r2.vanilla.internal.SR2CommandInternal.SR2CommandInternalDelay
+import org.readium.r2.shared.publication.ContentProtection
 import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.util.getOrElse
 import org.readium.r2.streamer.Streamer
@@ -35,6 +35,7 @@ import org.readium.r2.streamer.server.Server
 import org.slf4j.LoggerFactory
 import java.io.IOException
 import java.net.ServerSocket
+import java.util.ServiceLoader
 import java.util.UUID
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
@@ -94,13 +95,19 @@ internal class SR2Controller private constructor(
       val adobeRightsFile = configuration.adobeRightsFile
       this.logger.debug("creating controller for {}", bookFile)
 
+
+      val contentProtections =
+        ServiceLoader.load(ContentProtection::class.java).toList()
+
+      this.logger.debug("${contentProtections.size} Content Protections loaded")
+
       val streamer = Streamer(
         context = configuration.context,
         parsers = listOf(EpubParser()),
         ignoreDefaultParsers = true,
-        contentProtections = listOf(AdobeAdeptContentProtection())
+        contentProtections = contentProtections
       )
-      val file = AdobeAdeptProtectedFile(bookFile, adobeRightsFile)
+      val file = DrmProtectedFile(bookFile, adobeRightsFile)
       val publication = runBlocking {
         streamer.open(file, askCredentials = false)
       }.getOrElse {

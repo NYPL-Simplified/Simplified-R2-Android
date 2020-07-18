@@ -1,20 +1,11 @@
-/*
- * Module: r2-streamer-kotlin
- * Developers: Aferdita Muriqi, Clément Baumann, Quentin Gliosca
- *
- * Copyright (c) 2018. Readium Foundation. All rights reserved.
- * Use of this source code is governed by a BSD-style license which is detailed in the
- * LICENSE file present in the project repository where this source code is maintained.
- */
-
-package org.librarysimplified.r2.adobe
+package org.librarysimplified.r2.drm.adobe
 
 import org.readium.r2.shared.normalize
 import org.readium.r2.shared.parser.xml.ElementNode
 
 /**
  * AcsEncryptionParser parses Epub encryption.xml files with the following Adobe's extension :
- * every enc:EncryptedData node has an adept:resource child that contains an uri that is
+ * every enc:EncryptedData node has an adept:resource child that contains an uri
  * requested by ACS connector to instantiate a decryptor.
  */
 internal object AdobeAdeptEncryptionParser {

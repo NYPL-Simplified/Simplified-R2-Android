@@ -91,6 +91,7 @@ ext.libraries = [
   r2Streamer                : "com.github.qnga:r2-streamer-kotlin:nypl-SNAPSHOT",
   rxjava2                   : "io.reactivex.rxjava2:rxjava:2.1.13",
   slf4j                     : "org.slf4j:slf4j-api:1.7.25",
+  nyplDRMCore               : "org.librarysimplified.drm:org.librarysimplified.drm.core:1.1.2",
 ]
 
 apply plugin: "io.codearte.nexus-staging"

@@ -1,4 +1,4 @@
-package org.librarysimplified.r2.adobe
+package org.librarysimplified.r2.drm.adobe
 
 internal data class AdobeAdeptEncryptionProperties(
     val algorithm: String,

@@ -10,6 +10,7 @@ dependencies {
   implementation libraries.slf4j
 
   api project(":org.librarysimplified.r2.api")
-  api project(":org.librarysimplified.r2.adobe")
+  api project(":org.librarysimplified.r2.drm.core")
+  api project(":org.librarysimplified.r2.drm.adobe.provider")
   api project(":org.librarysimplified.r2.ui_thread")
 }

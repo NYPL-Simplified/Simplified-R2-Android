@@ -1,8 +1,11 @@
 dependencies {
   api libraries.kotlinStdlib
   api libraries.r2Shared
-  api libraries.r2Streamer
+  api libraries.nyplDRMCore
+  api libraries.nyplDRMAdobeProvider
 
   implementation libraries.androidXAnnotation
   implementation libraries.slf4j
+
+  api project(":org.librarysimplified.r2.drm.core")
 }

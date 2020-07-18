@@ -1,5 +1,6 @@
-package org.librarysimplified.r2.adobe
+package org.librarysimplified.r2.drm.adobe
 
+import org.nypl.drm.core.DRMException
 import org.readium.r2.shared.fetcher.BytesResource
 import org.readium.r2.shared.fetcher.FailureResource
 import org.readium.r2.shared.fetcher.LazyResource
@@ -29,18 +30,15 @@ internal class AdobeAdeptDecryptor(private val rights: String, private val encry
     if (encryptionProps == null || encryptionProps.algorithm !in listOf(AdeptAlgorithmCompressed, AdeptAlgorithmUncompressed))
       return@LazyResource resource
 
+    logger.debug("attempting to instantiate a decryption Resource")
+    logger.debug("href is ${link.href}")
+    logger.debug("algorithm is ${encryptionProps.algorithm}")
+    logger.debug("originalLength is ${encryptionProps.originalLength}")
+
     return@LazyResource try {
-      logger.debug("attempting to instantiate an AcsResource")
-      logger.debug("href is ${link.href}")
-      logger.debug("algorithm is ${encryptionProps.algorithm}")
-      logger.debug("originalLength is ${encryptionProps.originalLength}")
-      FullAdeptResource(resource, encryptionProps)
-    } catch (e: Exception) {
-      logger.error("unable to instantiate an AcsResource", e)
+      CbcAdeptResource(resource, encryptionProps)
+    } catch (e: DRMException) {
       FailureResource(link, Resource.Error.Forbidden)
-    } catch(e: UnsatisfiedLinkError) {
-      logger.error("DRM is not supported")
-      resource
     }
   }
 
@@ -49,19 +47,15 @@ internal class AdobeAdeptDecryptor(private val rights: String, private val encry
     private val encryption: AdobeAdeptEncryptionProperties
   ) : BytesResource( {
 
-    val resourceId = requireNotNull(encryption.resourceId).toByteArray()
-    val algoName = encryption.algorithm.toByteArray()
-    val originalLength = encryption.originalLength ?: 0
-
-    val bytes = resource.read().mapCatching {
-      val decryptorPtr = createDecryptor(resourceId, algoName, originalLength, rights.toByteArray())
-      if (decryptorPtr == 0L)
-        throw Resource.Error.Forbidden
-
-      readThroughDecryptor(decryptorPtr, it, isStart = true, isEnd = true)
-        .also {  deleteDecryptor(decryptorPtr) }
-        .takeIf { it.isNotEmpty() }
-        ?: throw Resource.Error.Forbidden
+    val bytes = resource.read().mapCatching { bytes ->
+        org.nypl.drm.adobe.AdobeAdeptDecryptor(
+          requireNotNull(encryption.resourceId),
+          encryption.algorithm,
+          encryption.originalLength ?: 0,
+          rights
+        ).use { decryptor ->
+          decryptor.decryptFully(bytes)
+        }
     }
 
     Pair(resource.link(), bytes)
@@ -78,44 +72,37 @@ internal class AdobeAdeptDecryptor(private val rights: String, private val encry
 
   private inner class CbcAdeptResource(private val resource: Resource, private val encryption: AdobeAdeptEncryptionProperties) : Resource {
 
-    private val decryptorPtr: Long
-    private var isClosed: Boolean = false
-
-    init {
-      val resourceId = requireNotNull(encryption.resourceId).toByteArray()
-      val algoName = encryption.algorithm.toByteArray()
-      val originalLength = encryption.originalLength ?: 0
-
-      decryptorPtr = createDecryptor(resourceId, algoName, originalLength, rights.toByteArray())
-      if (decryptorPtr == 0L)
-        throw Exception("Unable to instantiate an ACS Decryptor.")
-
-      logger.debug("decryptorPtr")
-      logger.debug(decryptorPtr.toString())
-    }
+    private val decryptor = org.nypl.drm.adobe.AdobeAdeptDecryptor(
+      requireNotNull(encryption.resourceId),
+      encryption.algorithm,
+      encryption.originalLength ?: 0,
+      rights
+    )
 
     override suspend fun link(): Link = resource.link()
 
-    override suspend fun read(range: LongRange?): ResourceTry<ByteArray> {
-      check(!isClosed) { "Resource is closed." }
+    override suspend fun read(range: LongRange?): ResourceTry<ByteArray> =
+      readByOrderedChunks()
+      //_read(range)
 
-      return resource.read(range).mapCatching {
-        readThroughDecryptor(decryptorPtr, it, isStart = true, isEnd = true)
-          .takeIf { it.isNotEmpty() }
-          ?: throw Resource.Error.Forbidden
+    suspend fun _read(range: LongRange?): ResourceTry<ByteArray> =
+      resource.read(range).mapCatching {
+        try {
+          val isStart = range == null || range.first == 0L
+          val isEnd =  range == null || range.last == resource.length().getOrThrow() - 1
+          logger.debug("Calling decryptRange with isStart = $isStart and isEnd = $isEnd")
+          decryptor.decryptRange(it, isStart, isEnd)
+        } catch (e: DRMException) {
+          throw Resource.Error.Forbidden
+        }
       }
-    }
 
     override suspend fun length(): ResourceTry<Long> =
       resource.length() //read().map { it.size.toLong() }
 
     override suspend fun close() {
-      if (isClosed)
-        return
-
+      decryptor.close()
       resource.close()
-      deleteDecryptor(decryptorPtr)
-      isClosed = true
     }
 
     // The following methods are intended for testing purposes.
@@ -125,15 +112,15 @@ internal class AdobeAdeptDecryptor(private val rights: String, private val encry
       var offset = 0L
       val buffer = ByteArrayOutputStream(length.toInt())
       while(offset < length) {
-        logger.debug("offset $offset")
-        val origBytes = resource.read(offset until offset + 4096).getOrThrow()
-        logger.debug("origBytes size ${origBytes.size}")
+        val range = offset until kotlin.math.min(offset + 4096, length)
+        logger.debug("range $range")
+        logger.debug("range length ${range.last - range.first + 1}")
 
         /*if (offset > 0 && offset + 4096 < length)
-          readThroughDecryptor(decryptorPtr, origBytes, isStart = false, isEnd = false) */
+          read */
 
-        val decryptedBytes = readThroughDecryptor(decryptorPtr, origBytes, isStart = offset == 0L, isEnd = offset + 4096 >= length)
-        logger.debug("decryptedBytes size ${decryptedBytes.size}")
+        val decryptedBytes = _read(range).getOrThrow()
+        logger.debug("decryptedBytes length ${decryptedBytes.size}")
         offset += 4096
         buffer.write(decryptedBytes, 0, decryptedBytes.size)
       }
@@ -165,9 +152,7 @@ internal class AdobeAdeptDecryptor(private val rights: String, private val encry
       logger.debug("blocks $blocks")
       val decryptedBlocks = blocks.map {
         logger.debug("block index ${it.first}")
-        val origBytes = resource.read(it.second).getOrThrow()
-        logger.debug("origBytes size ${origBytes.size}")
-        val decryptedBytes = readThroughDecryptor(decryptorPtr, origBytes, isStart = it.first == 0, isEnd = it.first == blockNb - 1)
+        val decryptedBytes= _read(it.second).getOrThrow()
         logger.debug("decryptedBytes size ${decryptedBytes.size}")
         Pair(it.first, decryptedBytes)
       }.sortedBy(Pair<Int, ByteArray>::first)

@@ -1,4 +1,4 @@
-package org.librarysimplified.r2.adobe
+package org.librarysimplified.r2.drm.adobe
 
 import org.readium.r2.shared.publication.LocalizedString
 import org.readium.r2.shared.publication.services.ContentProtectionService
