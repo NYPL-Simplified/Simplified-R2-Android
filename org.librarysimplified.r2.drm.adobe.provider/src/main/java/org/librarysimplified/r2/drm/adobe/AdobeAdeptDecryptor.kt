@@ -36,7 +36,10 @@ internal class AdobeAdeptDecryptor(private val rights: String, private val encry
     logger.debug("originalLength is ${encryptionProps.originalLength}")
 
     return@LazyResource try {
-      CbcAdeptResource(resource, encryptionProps)
+      when(encryptionProps.algorithm) {
+        AdeptAlgorithmUncompressed -> CbcAdeptResource(resource, encryptionProps)
+        else -> FullAdeptResource(resource, encryptionProps)
+      }
     } catch (e: DRMException) {
       FailureResource(link, Resource.Error.Forbidden)
     }
@@ -82,16 +85,18 @@ internal class AdobeAdeptDecryptor(private val rights: String, private val encry
     override suspend fun link(): Link = resource.link()
 
     override suspend fun read(range: LongRange?): ResourceTry<ByteArray> =
-      readByOrderedChunks()
-      //_read(range)
-
-    suspend fun _read(range: LongRange?): ResourceTry<ByteArray> =
-      resource.read(range).mapCatching {
+      resource.read(range).mapCatching { cipheredData ->
         try {
           val isStart = range == null || range.first == 0L
           val isEnd =  range == null || range.last == resource.length().getOrThrow() - 1
+          logger.debug("Ciphered data size ${cipheredData.size}")
           logger.debug("Calling decryptRange with isStart = $isStart and isEnd = $isEnd")
-          decryptor.decryptRange(it, isStart, isEnd)
+          val previousBlock =
+            if (range == null || isStart)
+              null
+            else
+              resource.read(range.first - 4096 until range.first).getOrThrow()
+          decryptor.decryptRange(cipheredData, previousBlock, isStart, isEnd)
         } catch (e: DRMException) {
           throw Resource.Error.Forbidden
         }
@@ -105,67 +110,7 @@ internal class AdobeAdeptDecryptor(private val rights: String, private val encry
       resource.close()
     }
 
-    // The following methods are intended for testing purposes.
-    suspend fun readByOrderedChunks(): ResourceTry<ByteArray> {
-      val length = resource.length().getOrThrow()
-      logger.debug("resource length $length")
-      var offset = 0L
-      val buffer = ByteArrayOutputStream(length.toInt())
-      while(offset < length) {
-        val range = offset until kotlin.math.min(offset + 4096, length)
-        logger.debug("range $range")
-        logger.debug("range length ${range.last - range.first + 1}")
-
-        /*if (offset > 0 && offset + 4096 < length)
-          read */
-
-        val decryptedBytes = _read(range).getOrThrow()
-        logger.debug("decryptedBytes length ${decryptedBytes.size}")
-        offset += 4096
-        buffer.write(decryptedBytes, 0, decryptedBytes.size)
-      }
-      return Try.success(buffer.toByteArray())
-    }
-
-    suspend fun readByUnorderedChunks(keepFirstBlockAtTheBeginning: Boolean = false): ResourceTry<ByteArray> {
-      val length = resource.length().getOrThrow()
-      logger.debug("resource length $length")
-      val blockNb =  ceil(length / 4096.toDouble()).toInt()
-      val blocks = (0 until blockNb)
-        .map { Pair(it, it * 4096L until kotlin.math.min(length, (it + 1)  * 4096L)) }
-        .toMutableList()
-
-      if (blocks.size > 1) {
-        // Forbid the true order
-        while (blocks.map(Pair<Int, LongRange>::first) == (0 until blockNb).toList())
-          blocks.shuffle()
-      }
-
-      if (keepFirstBlockAtTheBeginning)
-        blocks.apply {
-          val originalFirstIndex = indexOfFirst { it.first == 0 }
-          val actualFirstItem = first()
-          set(0, get(originalFirstIndex))
-          set(originalFirstIndex, actualFirstItem)
-        }
-
-      logger.debug("blocks $blocks")
-      val decryptedBlocks = blocks.map {
-        logger.debug("block index ${it.first}")
-        val decryptedBytes= _read(it.second).getOrThrow()
-        logger.debug("decryptedBytes size ${decryptedBytes.size}")
-        Pair(it.first, decryptedBytes)
-      }.sortedBy(Pair<Int, ByteArray>::first)
-        .map(Pair<Int, ByteArray>::second)
-
-      val buffer = ByteArrayOutputStream(length.toInt())
-      decryptedBlocks.forEach {
-        buffer.write(it, 0, it.size)
-      }
-
-      return Try.success(buffer.toByteArray())
-    }
-
   }
 
 }
+
