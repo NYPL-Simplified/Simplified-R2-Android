@@ -168,12 +168,4 @@ internal class AdobeAdeptDecryptor(private val rights: String, private val encry
 
   }
 
-  // Although they might be static, native methods are kept inside the class to avoid weird JNI names.
-
-  external fun createDecryptor(resourceId: ByteArray, algoName: ByteArray, originalLength: Long, rights: ByteArray): Long
-
-  external fun readThroughDecryptor(decryptorPtr: Long, data: ByteArray, isStart: Boolean, isEnd: Boolean): ByteArray
-
-  external fun deleteDecryptor(decryptorPtr: Long)
-
 }
