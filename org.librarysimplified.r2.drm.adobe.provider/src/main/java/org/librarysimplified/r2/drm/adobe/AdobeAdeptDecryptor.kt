@@ -10,8 +10,6 @@ import org.readium.r2.shared.fetcher.mapCatching
 import org.readium.r2.shared.publication.Link
 import org.readium.r2.shared.util.Try
 import org.slf4j.LoggerFactory
-import java.io.ByteArrayOutputStream
-import kotlin.math.ceil
 
 internal class AdobeAdeptDecryptor(private val rights: String, private val encryption: Map<String, AdobeAdeptEncryptionProperties>) {
 
@@ -51,13 +49,13 @@ internal class AdobeAdeptDecryptor(private val rights: String, private val encry
   ) : BytesResource( {
 
     val bytes = resource.read().mapCatching { bytes ->
-        org.nypl.drm.adobe.AdobeAdeptDecryptor(
+      org.nypl.drm.adobe.AdobeAdeptDecryptor(
           requireNotNull(encryption.resourceId),
           encryption.algorithm,
           encryption.originalLength ?: 0,
           rights
         ).use { decryptor ->
-          decryptor.decryptFully(bytes)
+          decryptor.decrypt(bytes, null, true)
         }
     }
 
@@ -75,7 +73,9 @@ internal class AdobeAdeptDecryptor(private val rights: String, private val encry
 
   private inner class CbcAdeptResource(private val resource: Resource, private val encryption: AdobeAdeptEncryptionProperties) : Resource {
 
-    private val decryptor = org.nypl.drm.adobe.AdobeAdeptDecryptor(
+    private var firstBlockFed: Boolean = false
+
+    private var decryptor = org.nypl.drm.adobe.AdobeAdeptDecryptor(
       requireNotNull(encryption.resourceId),
       encryption.algorithm,
       encryption.originalLength ?: 0,
@@ -85,22 +85,39 @@ internal class AdobeAdeptDecryptor(private val rights: String, private val encry
     override suspend fun link(): Link = resource.link()
 
     override suspend fun read(range: LongRange?): ResourceTry<ByteArray> =
-      resource.read(range).mapCatching { cipheredData ->
+      resource.read(range).mapCatching {
         try {
-          val isStart = range == null || range.first == 0L
-          val isEnd =  range == null || range.last == resource.length().getOrThrow() - 1
-          logger.debug("Ciphered data size ${cipheredData.size}")
-          logger.debug("Calling decryptRange with isStart = $isStart and isEnd = $isEnd")
-          val previousBlock =
-            if (range == null || isStart)
-              null
-            else
-              resource.read(range.first - 4096 until range.first).getOrThrow()
-          decryptor.decryptRange(cipheredData, previousBlock, isStart, isEnd)
+          decrypt(it, range, resource)
         } catch (e: DRMException) {
           throw Resource.Error.Forbidden
         }
       }
+
+    private suspend fun decrypt(cipheredData: ByteArray, range: LongRange?, resource: Resource): ByteArray {
+      val length = resource.length().getOrThrow()
+
+      val previousBlock =
+        if (range == null || range.first == 0L)
+          null
+        else
+          resource.read(range.first - decryptor.minimumBlockSize until range.first).getOrThrow()
+
+      if (previousBlock != null) {
+
+        if (!firstBlockFed) {
+          val firstBlock = resource.read(0L until decryptor.minimumBlockSize).getOrThrow()
+          decryptor.decrypt(firstBlock, null, firstBlock.size.toLong() == length)
+        }
+
+        firstBlockFed = true
+      }
+
+      val isLastBlock = range == null || range.last == length - 1
+
+      logger.debug("Ciphered data size ${cipheredData.size}")
+      logger.debug("Calling decryptRange with previousBlock is null = ${previousBlock == null} and isLastBlock = $isLastBlock")
+      return decryptor.decrypt(cipheredData, previousBlock, isLastBlock)
+    }
 
     override suspend fun length(): ResourceTry<Long> =
       resource.length() //read().map { it.size.toLong() }

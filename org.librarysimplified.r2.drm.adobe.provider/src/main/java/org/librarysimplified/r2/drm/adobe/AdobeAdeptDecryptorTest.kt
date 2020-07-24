@@ -7,6 +7,7 @@ import org.readium.r2.shared.util.Try
 import org.slf4j.LoggerFactory
 import java.io.ByteArrayOutputStream
 import kotlin.math.ceil
+import kotlin.math.roundToInt
 
 private val logger = LoggerFactory.getLogger(AdobeAdeptDecryptor::class.java)
 
@@ -19,12 +20,22 @@ suspend fun checkLittleYou(publication: Publication) {
     val bytes1 = publication.get(link).read().getOrThrow()
     logger.debug("Read resource in one block, length : ${bytes1.size}")
 
+    logger.debug("Read resource in one block twice")
+    publication.get(link).use {
+        val b1 = it.read().getOrThrow()
+        logger.debug("Read resource in one block twice, first length : ${b1.size}")
+        val b2 = it.read().getOrThrow()
+        logger.debug("Read resource in one block twice, second length : ${b2.size}")
+        check(b1.contentEquals(b2))
+    }
+
+    val chunkSize = 8192L
     logger.debug("Read resource by ordered chunks")
-    val bytes2 = publication.get(link).readByOrderedChunks().getOrThrow()
+    val bytes2 = publication.get(link).readByOrderedChunks(chunkSize = chunkSize).getOrThrow()
     logger.debug("Read resource by ordered chunks, length : ${bytes2.size}")
 
     logger.debug("Read resource by unordered chunks")
-    val bytes3 = publication.get(link).readByUnorderedChunks().getOrThrow()
+    val bytes3 = publication.get(link).readByUnorderedChunks(chunkSize = chunkSize, keepBoundariesInPlace = false).getOrThrow()
     logger.debug("Read resource by unordered chunks, length : ${bytes3.size}")
 
     logger.debug("Check equality with ordered chunks")
@@ -32,15 +43,30 @@ suspend fun checkLittleYou(publication: Publication) {
 
     logger.debug("Check equality with unordered chunks")
     check(bytes1.contentEquals(bytes3))
+
+    logger.debug("Read all resources")
+    (0..5).forEach {
+        publication.readAllResources()
+    }
+
+    //check(false)
+
 }
 
-suspend fun Resource.readByOrderedChunks(): ResourceTry<ByteArray> {
+suspend fun Publication.readAllResources() {
+    (readingOrder + resources).shuffled().forEach {
+        get(it).use { it.read().getOrThrow().size }
+    }
+}
+
+suspend fun Resource.readByOrderedChunks(chunkSize: Long): ResourceTry<ByteArray> {
     val cipheredResourceLength = 889296L
     logger.debug("ciphered resource length $cipheredResourceLength")
+
     var offset = 0L
     val buffer = ByteArrayOutputStream(cipheredResourceLength.toInt())
     while(offset < cipheredResourceLength) {
-        val range = offset until kotlin.math.min(offset + 4096, cipheredResourceLength)
+        val range = offset until kotlin.math.min(offset + chunkSize, cipheredResourceLength)
         logger.debug("range $range")
         logger.debug("range length ${range.last - range.first + 1}")
 
@@ -54,21 +80,18 @@ suspend fun Resource.readByOrderedChunks(): ResourceTry<ByteArray> {
         }
 
         logger.debug("decryptedBytes length ${decryptedBytes.size}")
-        offset += 4096
+        offset += chunkSize
         buffer.write(decryptedBytes, 0, decryptedBytes.size)
     }
     return Try.success(buffer.toByteArray())
 }
 
-suspend fun Resource.readByUnorderedChunks(
-    keepFirstBlockAtTheBeginning: Boolean = true,
-    keepLastBlockAtTheEnd: Boolean = true
-): ResourceTry<ByteArray> {
+suspend fun Resource.readByUnorderedChunks(chunkSize: Long, keepBoundariesInPlace: Boolean): ResourceTry<ByteArray> {
     val cipheredResourceLength = 889296L
     logger.debug("ciphered resource length $cipheredResourceLength")
-    val blockNb =  ceil(cipheredResourceLength / 4096.toDouble()).toInt()
+    val blockNb =  ceil(cipheredResourceLength / chunkSize.toDouble()).toInt()
     val blocks = (0 until blockNb)
-        .map { Pair(it, it * 4096L until kotlin.math.min(cipheredResourceLength, (it + 1)  * 4096L)) }
+        .map { Pair(it, it * chunkSize until kotlin.math.min(cipheredResourceLength, (it + 1)  * chunkSize)) }
         .toMutableList()
 
     if (blocks.size > 1) {
@@ -77,21 +100,24 @@ suspend fun Resource.readByUnorderedChunks(
             blocks.shuffle()
     }
 
-    if (keepFirstBlockAtTheBeginning)
-        blocks.apply {
-            val originalFirstIndex = indexOfFirst { it.first == 0 }
-            val actualFirstItem = first()
-            set(0, get(originalFirstIndex))
-            set(originalFirstIndex, actualFirstItem)
-        }
 
-    if (keepLastBlockAtTheEnd)
-        blocks.apply {
+    blocks.apply {
+        if (keepBoundariesInPlace) {
+            val originalFirstIndex = indexOfFirst { it.first == 0 }
+            swap(originalFirstIndex, 0)
             val originalLastIndex = indexOfFirst { it.first == blockNb - 1 }
-            val actualLastItem = last()
-            set(blockNb - 1, get(originalLastIndex))
-            set(originalLastIndex, actualLastItem)
+            swap(originalLastIndex, blockNb - 1)
+        } else {
+            if (first().first == 0) {
+                val newIndex = (Math.random() * blockNb).roundToInt()
+                swap(newIndex, 0)
+            }
+            if (last().first == blockNb - 1) {
+                val newIndex = (Math.random() * blockNb).roundToInt()
+                swap(newIndex, blockNb - 1)
+            }
         }
+    }
 
     logger.debug("blocks $blocks")
     val decryptedBlocks = blocks.map {
@@ -108,4 +134,11 @@ suspend fun Resource.readByUnorderedChunks(
     }
 
     return Try.success(buffer.toByteArray())
+}
+
+private fun <E> MutableList<E>.swap(index1: Int, index2: Int) {
+    val valueAtIndex1 = get(index1)
+    val valueAtIndex2 = get(index2)
+    set(index1, valueAtIndex2)
+    set(index2, valueAtIndex1)
 }

@@ -1,5 +1,6 @@
 dependencies {
   api libraries.kotlinStdlib
+  api libraries.kotlinCoroutines
   api libraries.r2Shared
   api libraries.nyplDRMCore
   api libraries.nyplDRMAdobeProvider
