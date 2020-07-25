@@ -1,7 +1,5 @@
 package org.librarysimplified.r2.drm.adobe
 
-import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.withContext
 import org.nypl.drm.core.DRMException
 import org.readium.r2.shared.fetcher.BytesResource
 import org.readium.r2.shared.fetcher.FailureResource
@@ -13,11 +11,7 @@ import org.readium.r2.shared.publication.Link
 import org.readium.r2.shared.util.Try
 import org.slf4j.LoggerFactory
 
-internal class AdobeAdeptDecryptor(
-  private val rights: String,
-  private val encryption: Map<String, AdobeAdeptEncryptionProperties>,
-  private val coroutineDispatcher: CoroutineDispatcher
-) {
+internal class AdobeAdeptDecryptor(private val rights: String, private val encryption: Map<String, AdobeAdeptEncryptionProperties>) {
 
   companion object {
 
@@ -55,8 +49,7 @@ internal class AdobeAdeptDecryptor(
   ) : BytesResource( {
 
     val bytes = resource.read().mapCatching { bytes ->
-      withContext(coroutineDispatcher) {
-        org.nypl.drm.adobe.AdobeAdeptDecryptor(
+      org.nypl.drm.adobe.AdobeAdeptDecryptor(
           requireNotNull(encryption.resourceId),
           encryption.algorithm,
           encryption.originalLength ?: 0,
@@ -64,7 +57,6 @@ internal class AdobeAdeptDecryptor(
         ).use { decryptor ->
           decryptor.decrypt(bytes, null, true)
         }
-      }
     }
 
     Pair(resource.link(), bytes)
@@ -83,7 +75,12 @@ internal class AdobeAdeptDecryptor(
 
     private var firstBlockFed: Boolean = false
 
-    private lateinit var decryptor: org.nypl.drm.adobe.AdobeAdeptDecryptor
+    private var decryptor = org.nypl.drm.adobe.AdobeAdeptDecryptor(
+      requireNotNull(encryption.resourceId),
+      encryption.algorithm,
+      encryption.originalLength ?: 0,
+      rights
+    )
 
     override suspend fun link(): Link = resource.link()
 
@@ -97,36 +94,19 @@ internal class AdobeAdeptDecryptor(
       }
 
     private suspend fun decrypt(cipheredData: ByteArray, range: LongRange?, resource: Resource): ByteArray {
-
-      if (!::decryptor.isInitialized)
-        decryptor = withContext(coroutineDispatcher) {
-          org.nypl.drm.adobe.AdobeAdeptDecryptor(
-            requireNotNull(encryption.resourceId),
-            encryption.algorithm,
-            encryption.originalLength ?: 0,
-            rights
-          )
-        }
-
-      val minBlockSize = withContext(coroutineDispatcher) {
-        decryptor.minimumBlockSize
-      }
-
       val length = resource.length().getOrThrow()
 
       val previousBlock =
         if (range == null || range.first == 0L)
           null
         else
-          resource.read(range.first - minBlockSize until range.first).getOrThrow()
+          resource.read(range.first - decryptor.minimumBlockSize until range.first).getOrThrow()
 
       if (previousBlock != null) {
 
         if (!firstBlockFed) {
-          val firstBlock = resource.read(0L until minBlockSize).getOrThrow()
-          withContext(coroutineDispatcher) {
-            decryptor.decrypt(firstBlock, null, firstBlock.size.toLong() == length)
-          }
+          val firstBlock = resource.read(0L until decryptor.minimumBlockSize).getOrThrow()
+          decryptor.decrypt(firstBlock, null, firstBlock.size.toLong() == length)
         }
 
         firstBlockFed = true
@@ -136,20 +116,14 @@ internal class AdobeAdeptDecryptor(
 
       logger.debug("Ciphered data size ${cipheredData.size}")
       logger.debug("Calling decryptRange with previousBlock is null = ${previousBlock == null} and isLastBlock = $isLastBlock")
-      return withContext(coroutineDispatcher) {
-        decryptor.decrypt(cipheredData, previousBlock, isLastBlock)
-      }
+      return decryptor.decrypt(cipheredData, previousBlock, isLastBlock)
     }
 
     override suspend fun length(): ResourceTry<Long> =
       resource.length() //read().map { it.size.toLong() }
 
     override suspend fun close() {
-      if (::decryptor.isInitialized)
-        withContext(coroutineDispatcher) {
-          decryptor.close()
-        }
-
+      decryptor.close()
       resource.close()
     }
 
