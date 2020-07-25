@@ -633,6 +633,12 @@ internal class SR2Controller private constructor(
       }
 
       try {
+        this.publication.close()
+      } catch (e: Exception) {
+        this.logger.error("could not close publication: ", e)
+      }
+
+      try {
         this.queueExecutor.shutdown()
       } catch (e: Exception) {
         this.logger.error("could not stop command queue: ", e)
