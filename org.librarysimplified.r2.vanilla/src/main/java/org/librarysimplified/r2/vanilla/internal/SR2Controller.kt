@@ -24,6 +24,7 @@ import org.librarysimplified.r2.api.SR2Locator
 import org.librarysimplified.r2.api.SR2Locator.SR2LocatorChapterEnd
 import org.librarysimplified.r2.api.SR2Locator.SR2LocatorPercent
 import org.librarysimplified.r2.drm.core.DrmProtectedFile
+import org.librarysimplified.r2.drm.core.DrmServiceProvider
 import org.librarysimplified.r2.vanilla.internal.SR2CommandInternal.SR2CommandInternalAPI
 import org.librarysimplified.r2.vanilla.internal.SR2CommandInternal.SR2CommandInternalDelay
 import org.readium.r2.shared.publication.ContentProtection
@@ -50,7 +51,8 @@ internal class SR2Controller private constructor(
   private val port: Int,
   private val server: Server,
   private val publication: Publication,
-  private val epubFileName: String
+  private val epubFileName: String,
+  private val drmServiceProviders: List<DrmServiceProvider>
 ) : SR2ControllerType {
 
   companion object {
@@ -96,9 +98,10 @@ internal class SR2Controller private constructor(
       this.logger.debug("creating controller for {}", bookFile)
 
 
-      val contentProtections =
-        ServiceLoader.load(ContentProtection::class.java).toList()
+      val drmServiceProviders =
+        ServiceLoader.load(DrmServiceProvider::class.java).toList()
 
+      val contentProtections = drmServiceProviders.map { it.contentProtection }
       this.logger.debug("${contentProtections.size} Content Protections loaded")
 
       val streamer = Streamer(
@@ -138,7 +141,8 @@ internal class SR2Controller private constructor(
         epubFileName = epubName,
         port = port,
         publication = publication,
-        server = server
+        server = server,
+        drmServiceProviders = drmServiceProviders
       )
     }
   }
@@ -636,6 +640,14 @@ internal class SR2Controller private constructor(
         this.publication.close()
       } catch (e: Exception) {
         this.logger.error("could not close publication: ", e)
+      }
+
+      drmServiceProviders.forEach {
+        try {
+          it.close()
+        } catch (e: Exception) {
+            this.logger.error("could not close ${it.name} service provider ", e)
+        }
       }
 
       try {

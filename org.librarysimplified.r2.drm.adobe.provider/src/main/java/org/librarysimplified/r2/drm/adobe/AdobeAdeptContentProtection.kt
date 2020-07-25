@@ -1,5 +1,6 @@
 package org.librarysimplified.r2.drm.adobe
 
+import kotlinx.coroutines.CoroutineDispatcher
 import org.librarysimplified.r2.drm.core.DrmProtectedFile
 import org.readium.r2.shared.fetcher.Fetcher
 import org.readium.r2.shared.fetcher.TransformingFetcher
@@ -9,9 +10,8 @@ import org.readium.r2.shared.publication.OnAskCredentials
 import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.util.File
 import org.readium.r2.shared.util.Try
-import java.nio.charset.Charset
 
-class AdobeAdeptContentProtection : ContentProtection {
+internal class AdobeAdeptContentProtection(private val coroutineDispatcher: CoroutineDispatcher) : ContentProtection {
 
   override suspend fun open(
     file: File,
@@ -41,7 +41,7 @@ class AdobeAdeptContentProtection : ContentProtection {
 
     val protectedFile = ContentProtection.ProtectedFile(
       file = file,
-      fetcher = TransformingFetcher(fetcher, AdobeAdeptDecryptor(rights, encryption)::transform)
+      fetcher = TransformingFetcher(fetcher, AdobeAdeptDecryptor(rights, encryption, coroutineDispatcher)::transform)
     )
 
     return Try.success(protectedFile)
