@@ -35,17 +35,18 @@ internal class AdobeAdeptDecryptor(private val rights: String, private val encry
 
     return@LazyResource try {
       when(encryptionProps.algorithm) {
-        AdeptAlgorithmUncompressed -> CbcAdeptResource(resource, encryptionProps)
-        else -> FullAdeptResource(resource, encryptionProps)
+        AdeptAlgorithmUncompressed -> CbcAdeptResource(resource, encryptionProps, rights)
+        else -> FullAdeptResource(resource, encryptionProps, rights)
       }
     } catch (e: DRMException) {
       FailureResource(link, Resource.Error.Forbidden)
     }
   }
 
-  private inner class FullAdeptResource(
+  private class FullAdeptResource(
     private val resource: Resource,
-    private val encryption: AdobeAdeptEncryptionProperties
+    private val encryption: AdobeAdeptEncryptionProperties,
+    private val rights: String
   ) : BytesResource( {
 
     val bytes = resource.read().mapCatching { bytes ->
@@ -71,7 +72,11 @@ internal class AdobeAdeptDecryptor(private val rights: String, private val encry
     override suspend fun close() = resource.close()
   }
 
-  private inner class CbcAdeptResource(private val resource: Resource, private val encryption: AdobeAdeptEncryptionProperties) : Resource {
+  private class CbcAdeptResource(
+    private val resource: Resource,
+    private val encryption: AdobeAdeptEncryptionProperties,
+    private val rights: String
+  ) : Resource {
 
     private var firstBlockFed: Boolean = false
 
@@ -87,13 +92,13 @@ internal class AdobeAdeptDecryptor(private val rights: String, private val encry
     override suspend fun read(range: LongRange?): ResourceTry<ByteArray> =
       resource.read(range).mapCatching {
         try {
-          decrypt(it, range, resource)
+          decrypt(it, range)
         } catch (e: DRMException) {
           throw Resource.Error.Forbidden
         }
       }
 
-    private suspend fun decrypt(cipheredData: ByteArray, range: LongRange?, resource: Resource): ByteArray {
+    private suspend fun decrypt(cipheredData: ByteArray, range: LongRange?): ByteArray {
       val length = resource.length().getOrThrow()
 
       val previousBlock =
