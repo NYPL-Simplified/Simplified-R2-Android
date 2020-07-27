@@ -1,5 +1,6 @@
 package org.librarysimplified.r2.drm.adobe
 
+import org.librarysimplified.r2.drm.adobe.provider.BuildConfig
 import org.nypl.drm.core.DRMException
 import org.readium.r2.shared.fetcher.BytesResource
 import org.readium.r2.shared.fetcher.FailureResource
@@ -89,14 +90,20 @@ internal class AdobeAdeptDecryptor(private val rights: String, private val encry
 
     override suspend fun link(): Link = resource.link()
 
-    override suspend fun read(range: LongRange?): ResourceTry<ByteArray> =
-      resource.read(range).mapCatching {
+    override suspend fun read(range: LongRange?): ResourceTry<ByteArray> {
+      @Suppress("NAME_SHADOWING")
+      val range = range
+        ?.coerceToPositiveIncreasing()
+        ?.apply { requireLengthFitInt() }
+
+      return resource.read(range).mapCatching {
         try {
           decrypt(it, range)
         } catch (e: DRMException) {
           throw Resource.Error.Forbidden
         }
       }
+    }
 
     private suspend fun decrypt(cipheredData: ByteArray, range: LongRange?): ByteArray {
       val length = resource.length().getOrThrow()
@@ -119,13 +126,43 @@ internal class AdobeAdeptDecryptor(private val rights: String, private val encry
 
       val isLastBlock = range == null || range.last == length - 1
 
+      logger.debug("Range $range")
       logger.debug("Ciphered data size ${cipheredData.size}")
-      logger.debug("Calling decryptRange with previousBlock is null = ${previousBlock == null} and isLastBlock = $isLastBlock")
+      logger.debug("Calling decrypt with previousBlock is null = ${previousBlock == null} and isLastBlock = $isLastBlock")
       return decryptor.decrypt(cipheredData, previousBlock, isLastBlock)
     }
 
-    override suspend fun length(): ResourceTry<Long> =
-      resource.length() //read().map { it.size.toLong() }
+    override suspend fun length(): ResourceTry<Long> {
+      if (encryption.originalLength != null)
+        return Try.success(encryption.originalLength)
+
+      return resource.length().mapCatching { encryptedLength ->
+        val firstBlockRange = 0L until kotlin.math.min(encryptedLength, decryptor.minimumBlockSize.toLong())
+        val encryptedFirstBlock = resource.read(firstBlockRange).getOrThrow()
+        val decryptedFirstBlock = decrypt(encryptedFirstBlock, firstBlockRange)
+
+        // The first block is also the last one.
+        if (encryptedLength == firstBlockRange.last -1)
+          return Try.success(decryptedFirstBlock.size.toLong())
+
+        val lastBlockLength = (encryptedLength % decryptor.minimumBlockSize)
+          .takeUnless { it == 0L }
+          ?: decryptor.minimumBlockSize.toLong()
+        val lastBlockStart = encryptedLength - lastBlockLength
+        val lastBlockRange = lastBlockStart until encryptedLength
+        val encryptedLastBlock = resource.read(lastBlockRange).getOrThrow()
+        val decryptedLastBlock = decrypt(encryptedLastBlock, lastBlockRange)
+
+        val firstBlockDiff = encryptedFirstBlock.size - decryptedFirstBlock.size
+        val lastBlockDiff = encryptedLastBlock.size - decryptedLastBlock.size
+        val decryptedLength = encryptedLength - firstBlockDiff - lastBlockDiff
+
+        if (BuildConfig.DEBUG)
+          check(decryptedLength < encryptedLength)
+
+        decryptedLength
+      }
+    }
 
     override suspend fun close() {
       decryptor.close()
@@ -135,4 +172,13 @@ internal class AdobeAdeptDecryptor(private val rights: String, private val encry
   }
 
 }
+
+private fun LongRange.coerceToPositiveIncreasing() =
+  if (first >= last)
+    0L until 0L
+  else
+    LongRange(first.coerceAtLeast(0), last.coerceAtLeast(0))
+
+private fun LongRange.requireLengthFitInt() = require(last - first + 1 <= Int.MAX_VALUE)
+
 

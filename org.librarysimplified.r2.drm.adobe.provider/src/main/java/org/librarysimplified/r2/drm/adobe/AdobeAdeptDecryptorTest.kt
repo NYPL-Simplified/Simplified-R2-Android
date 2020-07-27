@@ -17,8 +17,13 @@ suspend fun checkLittleYou(publication: Publication) {
     val link = publication.linkWithHref("/OEBPS/audio/LittleYou.mp4")!!
 
     logger.debug("Read resource in one block")
-    val bytes1 = publication.get(link).read().getOrThrow()
-    logger.debug("Read resource in one block, length : ${bytes1.size}")
+    val bytes = publication.get(link).use { it.read().getOrThrow() }
+    logger.debug("Read resource in one block, length : ${bytes.size}")
+
+    logger.debug("Compute decrypted length")
+    val length = publication.get(link).use { it.length().getOrThrow() }
+    logger.debug("Computed length: $length")
+    check(length == bytes.size.toLong())
 
     logger.debug("Read resource in one block twice")
     publication.get(link).use {
@@ -29,25 +34,30 @@ suspend fun checkLittleYou(publication: Publication) {
         check(b1.contentEquals(b2))
     }
 
-    val chunkSize = 8192L
-    logger.debug("Read resource by ordered chunks")
-    val bytes2 = publication.get(link).readByOrderedChunks(chunkSize = chunkSize).getOrThrow()
-    logger.debug("Read resource by ordered chunks, length : ${bytes2.size}")
+    for (chunkSize in listOf(4096L, 8192L)) {
+        logger.debug("Read resource by ordered chunks of size $chunkSize")
+        publication.get(link)
+            .readByOrderedChunks(chunkSize = chunkSize)
+            .getOrThrow()
+            .let {
+            logger.debug("Read resource by ordered chunks, length : ${it.size}")
+            check(bytes.contentEquals(it))
+        }
 
-    logger.debug("Read resource by unordered chunks")
-    val bytes3 = publication.get(link).readByUnorderedChunks(chunkSize = chunkSize, keepBoundariesInPlace = false).getOrThrow()
-    logger.debug("Read resource by unordered chunks, length : ${bytes3.size}")
-
-    logger.debug("Check equality with ordered chunks")
-    check(bytes1.contentEquals(bytes2))
-
-    logger.debug("Check equality with unordered chunks")
-    check(bytes1.contentEquals(bytes3))
-
-    logger.debug("Read all resources")
-    (0..5).forEach {
-        publication.readAllResources()
+        logger.debug("Read resource by unordered chunks of size $chunkSize")
+        publication.get(link)
+            .readByUnorderedChunks(chunkSize = chunkSize, keepBoundariesInPlace = false)
+            .getOrThrow()
+            .let {
+                logger.debug("Read resource by unordered chunks, length : ${it.size}")
+                check(bytes.contentEquals(it))
+            }
     }
+
+    /*logger.debug("Read all resources")
+    (0 until 5).forEach {
+        publication.readAllResources()
+    }*/
 
     //check(false)
 
