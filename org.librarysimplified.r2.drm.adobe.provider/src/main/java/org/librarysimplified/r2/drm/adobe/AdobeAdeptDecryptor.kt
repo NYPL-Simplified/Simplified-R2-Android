@@ -116,33 +116,25 @@ internal class AdobeAdeptDecryptor(private val rights: String, private val encry
     private suspend fun readRange(range: LongRange): ByteArray {
       val minBlockSize = decryptor.minimumBlockSize.toLong()
       val encryptedLength = encryptedLength().getOrThrow()
-      val decryptedFirstBlockLength = decryptedFirstBlockLength().getOrThrow()
-      val missingSize = minBlockSize - decryptedFirstBlockLength
 
-      return if (range.first < decryptedFirstBlockLength)  {
-        val encryptedRangeEnd = (range.last + 1 + missingSize).ceilMultipleOf(minBlockSize).coerceAtMost(encryptedLength)
-        val encryptedRange = 0 until encryptedRangeEnd
-        val slice = range.map(Long::toInt)
-        val decryptedContent = decrypt(resource.read(encryptedRange).getOrThrow(), encryptedRange)
-        decryptedContent.sliceArray(slice)
-      } else if ((range.first + missingSize).floorMultipleOf(minBlockSize) == 0L) {
-        val encryptedRangeEnd = (range.last + 1 + missingSize).ceilMultipleOf(minBlockSize).coerceAtMost(encryptedLength)
-        val encryptedRange = 0 until encryptedRangeEnd
-        val sliceStart = range.first.toInt()
-        val slice = sliceStart..(sliceStart + range.last - range.first).toInt()
-        val decryptedContent = decrypt(resource.read(encryptedRange).getOrThrow(), encryptedRange)
-        decryptedContent.sliceArray(slice)
-      } else {
-        @Suppress("NAME_SHADOWING")
-        val range = (range.first + missingSize)..(range.last + missingSize)
-        val encryptedRangeStart = range.first.floorMultipleOf(minBlockSize)
-        val encryptedRangeEnd = (range.last + 1).ceilMultipleOf(minBlockSize).coerceAtMost(encryptedLength)
-        val encryptedRange = encryptedRangeStart until encryptedRangeEnd
-        val sliceStart = (range.first - encryptedRange.first).toInt()
-        val slice = sliceStart..(sliceStart + range.last - range.first).toInt()
-        val decryptedContent = decrypt(resource.read(encryptedRange).getOrThrow(), encryptedRange)
-        decryptedContent.sliceArray(slice)
-      }
+      // The decrypted first block is missingSize shorter than the encrypted first block
+      val missingSize = minBlockSize - decryptedFirstBlockLength().getOrThrow()
+
+      // Will the first block be read to provide the desired range
+      val readFirstBlock = (range.first + missingSize).floorMultipleOf(minBlockSize) == 0L
+
+      val shiftedRange = (range.first + if (readFirstBlock) 0 else missingSize)..(range.last + missingSize)
+      val encryptedRangeStart = shiftedRange.first.floorMultipleOf(minBlockSize)
+      val encryptedRangeEnd = (shiftedRange.last + 1).ceilMultipleOf(minBlockSize).coerceAtMost(encryptedLength)
+
+      val encryptedRange = encryptedRangeStart until encryptedRangeEnd
+      val decryptedContent = decrypt(resource.read(encryptedRange).getOrThrow(), encryptedRange)
+
+      // Pick the decrypted data dropping blocks added to reach multiples of minBlockSize
+      val sliceStart = (shiftedRange.first - encryptedRange.first).toInt()
+
+      val slice = sliceStart..(sliceStart + range.last - range.first).toInt()
+      return decryptedContent.sliceArray(slice)
     }
 
     private suspend fun tryDecrypt(cipheredData: ByteArray, range: LongRange?): ResourceTry<ByteArray> =
@@ -278,5 +270,4 @@ private fun Long.floorMultipleOf(divisor: Long) = when {
   this < divisor -> 0
   else -> divisor  * (this / divisor)
 }
-
 
