@@ -86,7 +86,6 @@ internal class AdobeAdeptDecryptor(private val rights: String, private val encry
       rights
     )
 
-
     private var firstBlockFed: Boolean = false
 
     private lateinit var _originalLength: ResourceTry<Long>
@@ -112,8 +111,6 @@ internal class AdobeAdeptDecryptor(private val rights: String, private val encry
           decrypt(resource.read().getOrThrow(), range)
         else
           readRange(range)
-            .also { check(it.size.toLong() == range.last - range.first + 1) }
-            .also { check(it.contentEquals(read().getOrThrow().sliceArray(range.map(Long::toInt)))) }
       }
 
     private suspend fun readRange(range: LongRange): ByteArray {

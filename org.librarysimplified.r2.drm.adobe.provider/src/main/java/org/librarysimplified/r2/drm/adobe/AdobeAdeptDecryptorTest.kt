@@ -2,149 +2,123 @@ package org.librarysimplified.r2.drm.adobe
 
 import org.readium.r2.shared.fetcher.Resource
 import org.readium.r2.shared.fetcher.ResourceTry
+import org.readium.r2.shared.fetcher.mapCatching
+import org.readium.r2.shared.publication.Link
 import org.readium.r2.shared.publication.Publication
+import org.readium.r2.shared.publication.encryption.encryption
 import org.readium.r2.shared.util.Try
+import org.readium.r2.shared.util.getOrElse
 import org.slf4j.LoggerFactory
 import java.io.ByteArrayOutputStream
+import java.lang.Exception
 import kotlin.math.ceil
 import kotlin.math.roundToInt
 
 private val logger = LoggerFactory.getLogger(AdobeAdeptDecryptor::class.java)
 
-suspend fun checkLittleYou(publication: Publication) {
-    //Link(href=/OEBPS/audio/LittleYou.mp4, type=audio/mp4, templated=false, title=null, rels=[], properties=Properties(otherProperties={encrypted={algorithm=http://ns.adobe.com/adept/xmlenc#aes128-cbc-uncompressed}}), height=null, width=null, bitrate=null, duration=null, languages=[], alternates=[], children=[])
-    logger.debug("Maintenant on s'occupe de /OEBPS/audio/LittleYou.mp4")
-    val link = publication.linkWithHref("/OEBPS/audio/LittleYou.mp4")!!
+suspend fun Publication.checkDecryption() {
+    var failures = 0
 
-    logger.debug("Read resource in one block")
-    val bytes = publication.get(link).use { it.read().getOrThrow() }
-    logger.debug("Read resource in one block, length : ${bytes.size}")
+    logger.debug("checking resources are readable in one block")
+    val protectedLinks = (readingOrder + resources).filter(Link::isAdeptProtected)
 
-    logger.debug("Compute decrypted length")
-    val length = publication.get(link).use { it.length().getOrThrow() }
-    logger.debug("Computed length: $length")
-    check(length == bytes.size.toLong())
-
-    logger.debug("Read resource in one block twice")
-    publication.get(link).use {
-        val b1 = it.read().getOrThrow()
-        logger.debug("Read resource in one block twice, first length : ${b1.size}")
-        val b2 = it.read().getOrThrow()
-        logger.debug("Read resource in one block twice, second length : ${b2.size}")
-        check(b1.contentEquals(b2))
-    }
-
-    for (chunkSize in listOf(4096L, 8192L)) {
-        logger.debug("Read resource by ordered chunks of size $chunkSize")
-        publication.get(link)
-            .readByOrderedChunks(chunkSize = chunkSize)
-            .getOrThrow()
-            .let {
-            logger.debug("Read resource by ordered chunks, length : ${it.size}")
-            check(bytes.contentEquals(it))
-        }
-
-        logger.debug("Read resource by unordered chunks of size $chunkSize")
-        publication.get(link)
-            .readByUnorderedChunks(chunkSize = chunkSize, keepBoundariesInPlace = false)
-            .getOrThrow()
-            .let {
-                logger.debug("Read resource by unordered chunks, length : ${it.size}")
-                check(bytes.contentEquals(it))
-            }
-    }
-
-    /*logger.debug("Read all resources")
-    (0 until 5).forEach {
-        publication.readAllResources()
-    }*/
-
-    //check(false)
-
-}
-
-suspend fun Publication.readAllResources() {
-    (readingOrder + resources).shuffled().forEach {
-        get(it).use { it.read().getOrThrow().size }
-    }
-}
-
-suspend fun Resource.readByOrderedChunks(chunkSize: Long): ResourceTry<ByteArray> {
-    val length = length().getOrThrow()
-    var offset = 0L
-    val buffer = ByteArrayOutputStream(length.toInt())
-    while(offset < length) {
-        val range = offset until kotlin.math.min(offset + chunkSize, length)
-        logger.debug("Chunk $range")
-        logger.debug("Chunk length ${range.last - range.first + 1}")
-
-        val decryptedBytes = read(range).getOrThrow()
-
-        if (offset in 3000 until 300000) {
-            if (offset == 32768L)
-                logger.debug("offset == 32768")
-            val bytesr = read(range).getOrThrow()
-            check(bytesr.contentEquals(decryptedBytes))
-        }
-
-        logger.debug("decryptedBytes length ${decryptedBytes.size}")
-        offset += chunkSize
-        buffer.write(decryptedBytes, 0, decryptedBytes.size)
-    }
-    return Try.success(buffer.toByteArray())
-}
-
-suspend fun Resource.readByUnorderedChunks(chunkSize: Long, keepBoundariesInPlace: Boolean): ResourceTry<ByteArray> {
-    val length = length().getOrThrow()
-    val blockNb =  ceil(length / chunkSize.toDouble()).toInt()
-    val blocks = (0 until blockNb)
-        .map { Pair(it, it * chunkSize until kotlin.math.min(length, (it + 1)  * chunkSize)) }
-        .toMutableList()
-
-    if (blocks.size > 1) {
-        // Forbid the true order
-        while (blocks.map(Pair<Int, LongRange>::first) == (0 until blockNb).toList())
-            blocks.shuffle()
-    }
-
-    blocks.apply {
-        if (keepBoundariesInPlace) {
-            val originalFirstIndex = indexOfFirst { it.first == 0 }
-            swap(originalFirstIndex, 0)
-            val originalLastIndex = indexOfFirst { it.first == blockNb - 1 }
-            swap(originalLastIndex, blockNb - 1)
-        } else {
-            if (first().first == 0) {
-                val newIndex = (Math.random() * blockNb).roundToInt()
-                swap(newIndex, 0)
-            }
-            if (last().first == blockNb - 1) {
-                val newIndex = (Math.random() * blockNb).roundToInt()
-                swap(newIndex, blockNb - 1)
+    for (link in protectedLinks) {
+        logger.debug("attempting to read ${link.href} in one block")
+        get(link).use { resource ->
+            resource.read().onFailure {
+                logger.error("failed to read ${link.href} in one block", it)
+                failures += 1
             }
         }
     }
 
-    logger.debug("blocks $blocks")
-    val decryptedBlocks = blocks.map {
-        logger.debug("block index ${it.first}")
-        val decryptedBytes = read(it.second).getOrThrow()
-        logger.debug("decryptedBytes size ${decryptedBytes.size}")
-        Pair(it.first, decryptedBytes)
-    }.sortedBy(Pair<Int, ByteArray>::first)
-        .map(Pair<Int, ByteArray>::second)
-
-    val buffer = ByteArrayOutputStream(length.toInt())
-    decryptedBlocks.forEach {
-        buffer.write(it, 0, it.size)
+    logger.debug("checking resources can be read in one block twice")
+    for (link in protectedLinks) {
+        get(link).use {
+            val b1 = it.read().getOrThrow()
+            val b2 = it.read().getOrThrow()
+            try {
+                check(b1.contentEquals(b2))
+            } catch (e: Exception) {
+                logger.error("two readings of ${link.href} lead to a different result", it)
+                failures += 1
+            }
+        }
     }
 
-    return Try.success(buffer.toByteArray())
+    logger.debug("checking length computation is correct")
+    for (link in protectedLinks) {
+        val trueLength = get(link).use { it.read().getOrThrow().size.toLong() }
+        get(link).use { resource ->
+            resource.length().onFailure {
+                logger.error("failed to compute length of ${link.href}")
+                failures += 1
+            }.onSuccess {
+                try {
+                    check(it == trueLength)
+                } catch (e: Exception) {
+                    logger.error("computed resource length seems to be wrong", it)
+                    failures += 1
+                }
+            }
+        }
+    }
+
+    logger.debug("checking all uncompressed resources are readable by chunks")
+    val uncompressedLinks = (readingOrder + resources).filter(Link::isAdeptUncompressed)
+
+    for (link in uncompressedLinks) {
+        logger.debug("attempting to read ${link.href} by chunks ")
+        val groundTruth = get(link).use { it.read() }.getOrThrow()
+        for (chunkSize in listOf(2048L, 4096L, 8192L, 10000L)) {
+            get(link).use { resource ->
+                resource.readByChunks(chunkSize, groundTruth).onFailure {
+                    logger.error("failed to read ${link.href} by chunks of size $chunkSize", it)
+                    failures += 1
+                }
+            }
+        }
+    }
+
+    logger.info("$failures tests failed")
 }
 
-private fun <E> MutableList<E>.swap(index1: Int, index2: Int) {
-    val valueAtIndex1 = get(index1)
-    val valueAtIndex2 = get(index2)
-    set(index1, valueAtIndex2)
-    set(index2, valueAtIndex1)
-}
+private suspend fun Resource.readByChunks(chunkSize: Long, groundTruth: ByteArray, shuffle: Boolean = true): ResourceTry<ByteArray> =
+    length().mapCatching { length ->
+        val blockNb =  ceil(length / chunkSize.toDouble()).toInt()
+        val blocks = (0 until blockNb)
+            .map { Pair(it, it * chunkSize until kotlin.math.min(length, (it + 1)  * chunkSize)) }
+            .toMutableList()
+
+        if (blocks.size > 1 && shuffle) {
+            // Forbid the true order
+            while (blocks.map(Pair<Int, LongRange>::first) == (0 until blockNb).toList())
+                blocks.shuffle()
+        }
+
+        logger.debug("blocks $blocks")
+        val decryptedBlocks = blocks.map {
+            logger.debug("block index ${it.first}")
+            val decryptedBytes = read(it.second).getOrThrow()
+            check(decryptedBytes.contentEquals(groundTruth.sliceArray(it.second.map(Long::toInt))))
+            { "failed to decrypt block ${it.first}: ${it.second}" }
+            Pair(it.first, decryptedBytes)
+        }.sortedBy(Pair<Int, ByteArray>::first)
+            .map(Pair<Int, ByteArray>::second)
+
+        val buffer = ByteArrayOutputStream(length.toInt())
+        decryptedBlocks.forEach {
+            buffer.write(it, 0, it.size)
+        }
+
+        buffer.toByteArray()
+    }
+
+private val Link.isAdeptUncompressed: Boolean
+    get() = properties.encryption?.algorithm == AdobeAdeptDecryptor.AdeptAlgorithmUncompressed
+
+private val Link.isAdeptCompressed: Boolean
+    get() = properties.encryption?.algorithm == AdobeAdeptDecryptor.AdeptAlgorithmCompressed
+
+private val Link.isAdeptProtected: Boolean
+    get() = isAdeptUncompressed || isAdeptCompressed
