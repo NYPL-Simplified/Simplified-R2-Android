@@ -79,8 +79,6 @@ internal class AdobeAdeptDecryptor(private val rights: String, private val encry
     private val rights: String
   ) : Resource {
 
-    private var firstBlockFed: Boolean = false
-
     private var decryptor = org.nypl.drm.adobe.AdobeAdeptDecryptor(
       requireNotNull(encryption.resourceId),
       encryption.algorithm,
@@ -88,25 +86,77 @@ internal class AdobeAdeptDecryptor(private val rights: String, private val encry
       rights
     )
 
+
+    private var firstBlockFed: Boolean = false
+
+    private lateinit var _originalLength: ResourceTry<Long>
+
+    private lateinit var _encryptedLength:  ResourceTry<Long>
+
+    // Excepted when data size <= decryptor.minimumBlockSize,
+    // this might always be decryptor.minimumBlockSize - 32.
+    // It should be checked with other books.
+    private lateinit var _decryptedFirstBlockLength:  ResourceTry<Long>
+
     override suspend fun link(): Link = resource.link()
 
-    override suspend fun read(range: LongRange?): ResourceTry<ByteArray> {
-      @Suppress("NAME_SHADOWING")
-      val range = range
-        ?.coerceToPositiveIncreasing()
-        ?.apply { requireLengthFitInt() }
+    override suspend fun read(range: LongRange?): ResourceTry<ByteArray> =
+      length().mapCatching { length ->
+        @Suppress("NAME_SHADOWING")
+        val range = range
+            ?.coerceToPositiveIncreasing()
+            ?.apply { requireLengthFitInt() }
+            ?.let { it.first..it.last.coerceAtMost(length - 1) }
 
-      return resource.read(range).mapCatching {
-        try {
-          decrypt(it, range)
-        } catch (e: DRMException) {
-          throw Resource.Error.Forbidden
-        }
+        if (range == null || range.first == 0L && range.last == length - 1)
+          decrypt(resource.read().getOrThrow(), range)
+        else
+          readRange(range)
+            .also { check(it.size.toLong() == range.last - range.first + 1) }
+            .also { check(it.contentEquals(read().getOrThrow().sliceArray(range.map(Long::toInt)))) }
+      }
+
+    private suspend fun readRange(range: LongRange): ByteArray {
+      val minBlockSize = decryptor.minimumBlockSize.toLong()
+      val encryptedLength = encryptedLength().getOrThrow()
+      val decryptedFirstBlockLength = decryptedFirstBlockLength().getOrThrow()
+      val missingSize = minBlockSize - decryptedFirstBlockLength
+
+      return if (range.first < decryptedFirstBlockLength)  {
+        val encryptedRangeEnd = (range.last + 1 + missingSize).ceilMultipleOf(minBlockSize).coerceAtMost(encryptedLength)
+        val encryptedRange = 0 until encryptedRangeEnd
+        val slice = range.map(Long::toInt)
+        val decryptedContent = decrypt(resource.read(encryptedRange).getOrThrow(), encryptedRange)
+        decryptedContent.sliceArray(slice)
+      } else if ((range.first + missingSize).floorMultipleOf(minBlockSize) == 0L) {
+        val encryptedRangeEnd = (range.last + 1 + missingSize).ceilMultipleOf(minBlockSize).coerceAtMost(encryptedLength)
+        val encryptedRange = 0 until encryptedRangeEnd
+        val sliceStart = range.first.toInt()
+        val slice = sliceStart..(sliceStart + range.last - range.first).toInt()
+        val decryptedContent = decrypt(resource.read(encryptedRange).getOrThrow(), encryptedRange)
+        decryptedContent.sliceArray(slice)
+      } else {
+        @Suppress("NAME_SHADOWING")
+        val range = (range.first + missingSize)..(range.last + missingSize)
+        val encryptedRangeStart = range.first.floorMultipleOf(minBlockSize)
+        val encryptedRangeEnd = (range.last + 1).ceilMultipleOf(minBlockSize).coerceAtMost(encryptedLength)
+        val encryptedRange = encryptedRangeStart until encryptedRangeEnd
+        val sliceStart = (range.first - encryptedRange.first).toInt()
+        val slice = sliceStart..(sliceStart + range.last - range.first).toInt()
+        val decryptedContent = decrypt(resource.read(encryptedRange).getOrThrow(), encryptedRange)
+        decryptedContent.sliceArray(slice)
       }
     }
 
+    private suspend fun tryDecrypt(cipheredData: ByteArray, range: LongRange?): ResourceTry<ByteArray> =
+      try {
+          Try.success(decrypt(cipheredData, range))
+      } catch (e: DRMException) {
+        Try.failure(Resource.Error.Forbidden)
+      }
+
     private suspend fun decrypt(cipheredData: ByteArray, range: LongRange?): ByteArray {
-      val length = resource.length().getOrThrow()
+      val length = encryptedLength().getOrThrow()
 
       val previousBlock =
         if (range == null || range.first == 0L)
@@ -132,11 +182,38 @@ internal class AdobeAdeptDecryptor(private val rights: String, private val encry
       return decryptor.decrypt(cipheredData, previousBlock, isLastBlock)
     }
 
-    override suspend fun length(): ResourceTry<Long> {
-      if (encryption.originalLength != null)
-        return Try.success(encryption.originalLength)
+    private suspend fun decryptedFirstBlockLength(): ResourceTry<Long> {
+      if (::_decryptedFirstBlockLength.isInitialized)
+        return _decryptedFirstBlockLength
 
-      return resource.length().mapCatching { encryptedLength ->
+      val encryptedFirstBlockLength = kotlin.math.min(encryptedLength().getOrThrow(), decryptor.minimumBlockSize.toLong())
+      val firstBlockRange = 0L until encryptedFirstBlockLength
+      val encryptedFirstBlock = resource.read(firstBlockRange).getOrThrow()
+
+      _decryptedFirstBlockLength = tryDecrypt(encryptedFirstBlock, firstBlockRange).map { it.size.toLong() }
+
+      return _decryptedFirstBlockLength
+    }
+
+    private suspend fun encryptedLength(): ResourceTry<Long> {
+      if (::_encryptedLength.isInitialized)
+        return _encryptedLength
+
+      _encryptedLength = resource.length()
+      return _encryptedLength
+    }
+
+    override suspend fun length(): ResourceTry<Long> {
+      if (::_originalLength.isInitialized)
+        return _originalLength
+
+      if (encryption.originalLength != null) {
+        _originalLength = Try.success(encryption.originalLength)
+        return _originalLength
+      }
+
+      logger.debug("Computing length")
+      _originalLength = encryptedLength().mapCatching { encryptedLength ->
         val firstBlockRange = 0L until kotlin.math.min(encryptedLength, decryptor.minimumBlockSize.toLong())
         val encryptedFirstBlock = resource.read(firstBlockRange).getOrThrow()
         val decryptedFirstBlock = decrypt(encryptedFirstBlock, firstBlockRange)
@@ -159,9 +236,12 @@ internal class AdobeAdeptDecryptor(private val rights: String, private val encry
 
         if (BuildConfig.DEBUG)
           check(decryptedLength < encryptedLength)
+        logger.debug("length computed to $decryptedLength")
 
         decryptedLength
       }
+
+      return _originalLength
     }
 
     override suspend fun close() {
@@ -173,12 +253,33 @@ internal class AdobeAdeptDecryptor(private val rights: String, private val encry
 
 }
 
+
 private fun LongRange.coerceToPositiveIncreasing() =
   if (first >= last)
     0L until 0L
   else
     LongRange(first.coerceAtLeast(0), last.coerceAtLeast(0))
 
-private fun LongRange.requireLengthFitInt() = require(last - first + 1 <= Int.MAX_VALUE)
+
+private fun LongRange.requireLengthFitInt() =
+  require(last - first + 1 <= Int.MAX_VALUE)
+
+
+private fun LongRange.shift(offset: Long) =
+  (start + offset)..(last + offset)
+
+
+private fun Long.ceilMultipleOf(divisor: Long) =
+  if (this % divisor == 0L)
+    this
+  else
+    divisor * (this / divisor + 1)
+
+
+private fun Long.floorMultipleOf(divisor: Long) = when {
+  this % divisor == 0L -> this
+  this < divisor -> 0
+  else -> divisor  * (this / divisor)
+}
 
 

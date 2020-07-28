@@ -70,15 +70,13 @@ suspend fun Publication.readAllResources() {
 }
 
 suspend fun Resource.readByOrderedChunks(chunkSize: Long): ResourceTry<ByteArray> {
-    val cipheredResourceLength = 889296L
-    logger.debug("ciphered resource length $cipheredResourceLength")
-
+    val length = length().getOrThrow()
     var offset = 0L
-    val buffer = ByteArrayOutputStream(cipheredResourceLength.toInt())
-    while(offset < cipheredResourceLength) {
-        val range = offset until kotlin.math.min(offset + chunkSize, cipheredResourceLength)
-        logger.debug("range $range")
-        logger.debug("range length ${range.last - range.first + 1}")
+    val buffer = ByteArrayOutputStream(length.toInt())
+    while(offset < length) {
+        val range = offset until kotlin.math.min(offset + chunkSize, length)
+        logger.debug("Chunk $range")
+        logger.debug("Chunk length ${range.last - range.first + 1}")
 
         val decryptedBytes = read(range).getOrThrow()
 
@@ -97,11 +95,10 @@ suspend fun Resource.readByOrderedChunks(chunkSize: Long): ResourceTry<ByteArray
 }
 
 suspend fun Resource.readByUnorderedChunks(chunkSize: Long, keepBoundariesInPlace: Boolean): ResourceTry<ByteArray> {
-    val cipheredResourceLength = 889296L
-    logger.debug("ciphered resource length $cipheredResourceLength")
-    val blockNb =  ceil(cipheredResourceLength / chunkSize.toDouble()).toInt()
+    val length = length().getOrThrow()
+    val blockNb =  ceil(length / chunkSize.toDouble()).toInt()
     val blocks = (0 until blockNb)
-        .map { Pair(it, it * chunkSize until kotlin.math.min(cipheredResourceLength, (it + 1)  * chunkSize)) }
+        .map { Pair(it, it * chunkSize until kotlin.math.min(length, (it + 1)  * chunkSize)) }
         .toMutableList()
 
     if (blocks.size > 1) {
@@ -109,7 +106,6 @@ suspend fun Resource.readByUnorderedChunks(chunkSize: Long, keepBoundariesInPlac
         while (blocks.map(Pair<Int, LongRange>::first) == (0 until blockNb).toList())
             blocks.shuffle()
     }
-
 
     blocks.apply {
         if (keepBoundariesInPlace) {
@@ -138,7 +134,7 @@ suspend fun Resource.readByUnorderedChunks(chunkSize: Long, keepBoundariesInPlac
     }.sortedBy(Pair<Int, ByteArray>::first)
         .map(Pair<Int, ByteArray>::second)
 
-    val buffer = ByteArrayOutputStream(cipheredResourceLength.toInt())
+    val buffer = ByteArrayOutputStream(length.toInt())
     decryptedBlocks.forEach {
         buffer.write(it, 0, it.size)
     }
