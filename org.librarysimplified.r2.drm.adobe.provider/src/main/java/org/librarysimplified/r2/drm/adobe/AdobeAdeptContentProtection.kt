@@ -9,7 +9,6 @@ import org.readium.r2.shared.publication.OnAskCredentials
 import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.util.File
 import org.readium.r2.shared.util.Try
-import java.nio.charset.Charset
 
 class AdobeAdeptContentProtection : ContentProtection {
 
@@ -46,5 +45,4 @@ class AdobeAdeptContentProtection : ContentProtection {
 
     return Try.success(protectedFile)
   }
-
 }

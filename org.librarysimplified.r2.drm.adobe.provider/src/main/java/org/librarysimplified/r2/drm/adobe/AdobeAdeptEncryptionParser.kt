@@ -4,7 +4,7 @@ import org.readium.r2.shared.normalize
 import org.readium.r2.shared.parser.xml.ElementNode
 
 /**
- * AcsEncryptionParser parses Epub encryption.xml files with the following Adobe's extension :
+ * Parses Epub encryption.xml files with the following Adobe's extension :
  * every enc:EncryptedData node has an adept:resource child that contains an uri
  * requested by ACS connector to instantiate a decryptor.
  */

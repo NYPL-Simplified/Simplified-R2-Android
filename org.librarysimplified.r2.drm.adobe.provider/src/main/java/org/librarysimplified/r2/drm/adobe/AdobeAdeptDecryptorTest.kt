@@ -6,81 +6,81 @@ import org.readium.r2.shared.fetcher.mapCatching
 import org.readium.r2.shared.publication.Link
 import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.publication.encryption.encryption
-import org.readium.r2.shared.util.Try
-import org.readium.r2.shared.util.getOrElse
 import org.slf4j.LoggerFactory
 import java.io.ByteArrayOutputStream
-import java.lang.Exception
 import kotlin.math.ceil
-import kotlin.math.roundToInt
 
 private val logger = LoggerFactory.getLogger(AdobeAdeptDecryptor::class.java)
 
+
 suspend fun Publication.checkDecryption() {
-    var failures = 0
 
+    checkResourcesAreReadableInOneBlock(this)
+
+    checkResourcesCanBeReadInOneBlockTwice(this)
+
+    checkLengthComputationIsCorrect(this)
+
+    checkAllUncompressedResourcesAreReadableByChunks(this)
+}
+
+private suspend fun checkResourcesAreReadableInOneBlock(publication: Publication) {
     logger.debug("checking resources are readable in one block")
-    val protectedLinks = (readingOrder + resources).filter(Link::isAdeptProtected)
 
-    for (link in protectedLinks) {
-        logger.debug("attempting to read ${link.href} in one block")
-        get(link).use { resource ->
-            resource.read().onFailure {
-                logger.error("failed to read ${link.href} in one block", it)
-                failures += 1
+    (publication.readingOrder + publication.resources)
+        .filter(Link::isAdeptProtected)
+        .forEach { link ->
+            logger.debug("attempting to read ${link.href} in one block")
+            publication.get(link).use { resource ->
+                val bytes = resource.read()
+                check(bytes.isSuccess) { "failed to read ${link.href} in one block" }
             }
-        }
-    }
+     }
+}
 
+private suspend fun checkResourcesCanBeReadInOneBlockTwice(publication: Publication) {
     logger.debug("checking resources can be read in one block twice")
-    for (link in protectedLinks) {
-        get(link).use {
-            val b1 = it.read().getOrThrow()
-            val b2 = it.read().getOrThrow()
-            try {
-                check(b1.contentEquals(b2))
-            } catch (e: Exception) {
-                logger.error("two readings of ${link.href} lead to a different result", it)
-                failures += 1
-            }
-        }
-    }
 
+    (publication.readingOrder + publication.resources)
+        .filter(Link::isAdeptProtected)
+        .forEach { link ->
+            publication.get(link).use {
+                val b1 = it.read().getOrThrow()
+                val b2 = it.read().getOrThrow()
+                check(b1.contentEquals(b2)) { "two readings of ${link.href} lead to a different result" }
+            }
+    }
+}
+
+private suspend fun checkLengthComputationIsCorrect(publication: Publication) {
     logger.debug("checking length computation is correct")
-    for (link in protectedLinks) {
-        val trueLength = get(link).use { it.read().getOrThrow().size.toLong() }
-        get(link).use { resource ->
-            resource.length().onFailure {
-                logger.error("failed to compute length of ${link.href}")
-                failures += 1
-            }.onSuccess {
-                try {
-                    check(it == trueLength)
-                } catch (e: Exception) {
-                    logger.error("computed resource length seems to be wrong", it)
-                    failures += 1
-                }
+
+    (publication.readingOrder + publication.resources)
+        .filter(Link::isAdeptProtected)
+        .forEach { link ->
+            val trueLength = publication.get(link).use { it.read().getOrThrow().size.toLong() }
+            publication.get(link).use { resource ->
+                val computedLength =  resource.length()
+                check(computedLength.isSuccess) { "failed to compute length of ${link.href}" }
+                check(computedLength.getOrThrow() == trueLength) { "computed length of ${link.href} seems to be wrong" }
             }
         }
-    }
+}
 
+private suspend fun checkAllUncompressedResourcesAreReadableByChunks(publication: Publication) {
     logger.debug("checking all uncompressed resources are readable by chunks")
-    val uncompressedLinks = (readingOrder + resources).filter(Link::isAdeptUncompressed)
-
-    for (link in uncompressedLinks) {
-        logger.debug("attempting to read ${link.href} by chunks ")
-        val groundTruth = get(link).use { it.read() }.getOrThrow()
-        for (chunkSize in listOf(2048L, 4096L, 8192L, 10000L)) {
-            get(link).use { resource ->
-                resource.readByChunks(chunkSize, groundTruth).onFailure {
-                    logger.error("failed to read ${link.href} by chunks of size $chunkSize", it)
-                    failures += 1
+    (publication.readingOrder + publication.resources)
+        .filter(Link::isAdeptUncompressed)
+        .forEach { link ->
+            logger.debug("attempting to read ${link.href} by chunks ")
+            val groundTruth = publication.get(link).use { it.read() }.getOrThrow()
+            for (chunkSize in listOf(2048L, 4096L, 8192L, 10000L)) {
+                publication.get(link).use { resource ->
+                    val bytes = resource.readByChunks(chunkSize, groundTruth)
+                    check(bytes.isSuccess) { "failed to read ${link.href} by chunks of size $chunkSize" }
                 }
             }
         }
-    }
-
-    logger.info("$failures tests failed")
 }
 
 private suspend fun Resource.readByChunks(chunkSize: Long, groundTruth: ByteArray, shuffle: Boolean = true): ResourceTry<ByteArray> =
