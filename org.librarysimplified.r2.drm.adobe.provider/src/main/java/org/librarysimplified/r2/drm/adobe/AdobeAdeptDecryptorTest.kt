@@ -8,6 +8,7 @@ import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.publication.encryption.encryption
 import org.slf4j.LoggerFactory
 import java.io.ByteArrayOutputStream
+import java.lang.IllegalStateException
 import kotlin.math.ceil
 
 private val logger = LoggerFactory.getLogger(AdobeAdeptDecryptor::class.java)
@@ -22,6 +23,8 @@ suspend fun Publication.checkDecryption() {
     checkLengthComputationIsCorrect(this)
 
     checkAllUncompressedResourcesAreReadableByChunks(this)
+
+    checkExceedingRangesAreAllowed(this)
 }
 
 private suspend fun checkResourcesAreReadableInOneBlock(publication: Publication) {
@@ -69,6 +72,7 @@ private suspend fun checkLengthComputationIsCorrect(publication: Publication) {
 
 private suspend fun checkAllUncompressedResourcesAreReadableByChunks(publication: Publication) {
     logger.debug("checking all uncompressed resources are readable by chunks")
+
     (publication.readingOrder + publication.resources)
         .filter(Link::isAdeptUncompressed)
         .forEach { link ->
@@ -76,11 +80,33 @@ private suspend fun checkAllUncompressedResourcesAreReadableByChunks(publication
             val groundTruth = publication.get(link).use { it.read() }.getOrThrow()
             for (chunkSize in listOf(2048L, 4096L, 8192L, 10000L)) {
                 publication.get(link).use { resource ->
-                    val bytes = resource.readByChunks(chunkSize, groundTruth)
-                    check(bytes.isSuccess) { "failed to read ${link.href} by chunks of size $chunkSize" }
+                    resource.readByChunks(chunkSize, groundTruth).onFailure {
+                        logger.error("grrr", it)
+                        throw IllegalStateException("failed to read ${link.href} by chunks of size $chunkSize", it)
+                    }
                 }
             }
         }
+}
+
+private suspend fun checkExceedingRangesAreAllowed(publication: Publication) {
+    logger.debug("checking exceeding ranges are allowed in CbcAdeptResource")
+
+    (publication.readingOrder + publication.resources)
+        .filter(Link::isAdeptUncompressed)
+        .forEach { link ->
+            publication.get(link).use { resource ->
+                for (excess in listOf(100, 2048, 4096, 5028)) {
+                    val length = resource.length().getOrThrow()
+                    val bytes = resource.read(0 until length + excess).getOrThrow()
+                    val truth = resource.read().getOrThrow()
+                    check(bytes.contentEquals(truth)) {
+                        "decryption of a range exceeding the length by $excess failed"
+                    }
+                }
+            }
+        }
+
 }
 
 private suspend fun Resource.readByChunks(chunkSize: Long, groundTruth: ByteArray, shuffle: Boolean = true): ResourceTry<ByteArray> =
@@ -98,8 +124,10 @@ private suspend fun Resource.readByChunks(chunkSize: Long, groundTruth: ByteArra
 
         logger.debug("blocks $blocks")
         val decryptedBlocks = blocks.map {
-            logger.debug("block index ${it.first}")
+            logger.debug("block index ${it.first}: ${it.second}")
             val decryptedBytes = read(it.second).getOrThrow()
+            logger.debug("decrypted length: ${decryptedBytes.size}")
+            logger.debug("expected length: ${groundTruth.sliceArray(it.second.map(Long::toInt)).size}")
             check(decryptedBytes.contentEquals(groundTruth.sliceArray(it.second.map(Long::toInt))))
             { "failed to decrypt block ${it.first}: ${it.second}" }
             Pair(it.first, decryptedBytes)
@@ -113,6 +141,7 @@ private suspend fun Resource.readByChunks(chunkSize: Long, groundTruth: ByteArra
 
         buffer.toByteArray()
     }
+
 
 private val Link.isAdeptUncompressed: Boolean
     get() = properties.encryption?.algorithm == AdobeAdeptDecryptor.AdeptAlgorithmUncompressed
