@@ -28,8 +28,7 @@ internal class AdobeAdeptDecryptor(private val rights: String, private val encry
     if (encryptionProps == null || encryptionProps.algorithm !in listOf(AdeptAlgorithmCompressed, AdeptAlgorithmUncompressed))
       return@LazyResource resource
 
-    logger.debug("attempting to instantiate a decryption Resource")
-    logger.debug("href is ${link.href}")
+    logger.debug("attempting to instantiate a decryption Resource for href ${link.href}")
     logger.debug("algorithm is ${encryptionProps.algorithm}")
     logger.debug("originalLength is ${encryptionProps.originalLength}")
 

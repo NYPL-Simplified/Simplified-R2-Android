@@ -6,6 +6,7 @@ import org.readium.r2.shared.fetcher.mapCatching
 import org.readium.r2.shared.publication.Link
 import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.publication.encryption.encryption
+import org.readium.r2.shared.util.getOrElse
 import org.slf4j.LoggerFactory
 import java.io.ByteArrayOutputStream
 import java.lang.IllegalStateException
@@ -50,7 +51,7 @@ private suspend fun checkResourcesCanBeReadInOneBlockTwice(publication: Publicat
             publication.get(link).use {
                 val b1 = it.read().getOrThrow()
                 val b2 = it.read().getOrThrow()
-                check(b1.contentEquals(b2)) { "two readings of ${link.href} lead to a different result" }
+                check(b1.contentEquals(b2)) { "two decryptions of ${link.href} lead to a different result" }
             }
     }
 }
@@ -63,9 +64,12 @@ private suspend fun checkLengthComputationIsCorrect(publication: Publication) {
         .forEach { link ->
             val trueLength = publication.get(link).use { it.read().getOrThrow().size.toLong() }
             publication.get(link).use { resource ->
-                val computedLength =  resource.length()
-                check(computedLength.isSuccess) { "failed to compute length of ${link.href}" }
-                check(computedLength.getOrThrow() == trueLength) { "computed length of ${link.href} seems to be wrong" }
+                resource.length()
+                    .onFailure {
+                        throw IllegalStateException("failed to compute length of ${link.href}", it)
+                    }.onSuccess {
+                        check(it == trueLength) { "computed length of ${link.href} seems to be wrong" }
+                    }
             }
         }
 }
@@ -81,7 +85,6 @@ private suspend fun checkAllUncompressedResourcesAreReadableByChunks(publication
             for (chunkSize in listOf(2048L, 4096L, 8192L, 10000L)) {
                 publication.get(link).use { resource ->
                     resource.readByChunks(chunkSize, groundTruth).onFailure {
-                        logger.error("grrr", it)
                         throw IllegalStateException("failed to read ${link.href} by chunks of size $chunkSize", it)
                     }
                 }
@@ -98,18 +101,22 @@ private suspend fun checkExceedingRangesAreAllowed(publication: Publication) {
             publication.get(link).use { resource ->
                 for (excess in listOf(100, 2048, 4096, 5028)) {
                     val length = resource.length().getOrThrow()
-                    val bytes = resource.read(0 until length + excess).getOrThrow()
                     val truth = resource.read().getOrThrow()
-                    check(bytes.contentEquals(truth)) {
-                        "decryption of a range exceeding the length by $excess failed"
-                    }
+                    val range = 0 until length + excess
+                    resource.read(range)
+                        .onFailure {
+                            throw IllegalStateException("unable to decrypt range $range from ${link.href}")
+                        }.onSuccess {
+                            check(it.contentEquals(truth)) {
+                                "decryption of a range exceeding the length of ${link.href} by $excess failed"
+                            }
+                        }
                 }
             }
         }
-
 }
 
-private suspend fun Resource.readByChunks(chunkSize: Long, groundTruth: ByteArray, shuffle: Boolean = true): ResourceTry<ByteArray> =
+private suspend fun Resource.readByChunks(chunkSize: Long, groundTruth: ByteArray, shuffle: Boolean = true) =
     length().mapCatching { length ->
         val blockNb =  ceil(length / chunkSize.toDouble()).toInt()
         val blocks = (0 until blockNb)
@@ -123,23 +130,18 @@ private suspend fun Resource.readByChunks(chunkSize: Long, groundTruth: ByteArra
         }
 
         logger.debug("blocks $blocks")
-        val decryptedBlocks = blocks.map {
+        blocks.forEach {
             logger.debug("block index ${it.first}: ${it.second}")
-            val decryptedBytes = read(it.second).getOrThrow()
-            logger.debug("decrypted length: ${decryptedBytes.size}")
-            logger.debug("expected length: ${groundTruth.sliceArray(it.second.map(Long::toInt)).size}")
+            val decryptedBytes = read(it.second).getOrElse { error ->
+                throw IllegalStateException("unable to decrypt chunk ${it.second} from ${link().href}", error)
+            }
             check(decryptedBytes.contentEquals(groundTruth.sliceArray(it.second.map(Long::toInt))))
-            { "failed to decrypt block ${it.first}: ${it.second}" }
+            {   logger.debug("decrypted length: ${decryptedBytes.size}")
+                logger.debug("expected length: ${groundTruth.sliceArray(it.second.map(Long::toInt)).size}")
+                "decrypted chunk ${it.first}: ${it.second} seems to be wrong"
+            }
             Pair(it.first, decryptedBytes)
-        }.sortedBy(Pair<Int, ByteArray>::first)
-            .map(Pair<Int, ByteArray>::second)
-
-        val buffer = ByteArrayOutputStream(length.toInt())
-        decryptedBlocks.forEach {
-            buffer.write(it, 0, it.size)
         }
-
-        buffer.toByteArray()
     }
 
 
