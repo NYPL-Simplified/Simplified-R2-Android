@@ -4,4 +4,9 @@ include ":org.librarysimplified.r2.ui_thread"
 include ":org.librarysimplified.r2.vanilla"
 include ":org.librarysimplified.r2.views"
 include ":org.librarysimplified.r2.drm.core"
-include ":org.librarysimplified.r2.drm.adobe.provider"
+
+if (hasProperty("org.librarysimplified.enableAdeptSupport") &&
+        getProperty("org.librarysimplified.enableAdeptSupport").toBoolean()) {
+
+    include ":org.librarysimplified.r2.drm.adobe.provider"
+}

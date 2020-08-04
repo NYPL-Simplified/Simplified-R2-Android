@@ -6,6 +6,7 @@ buildscript {
   ext.kotlin_version = "1.3.72"
 
   repositories {
+    mavenLocal()
     mavenCentral()
     google()
     jcenter()
@@ -92,6 +93,7 @@ ext.libraries = [
   rxjava2                   : "io.reactivex.rxjava2:rxjava:2.1.13",
   slf4j                     : "org.slf4j:slf4j-api:1.7.25",
   nyplDRMCore               : "org.librarysimplified.drm:org.librarysimplified.drm.core:1.1.2",
+  nyplDRMAdobeProvider      : "org.librarysimplified.drm.adobe:org.librarysimplified.drm.adobe.provider:1.1.27",
 ]
 
 apply plugin: "io.codearte.nexus-staging"

@@ -3,10 +3,10 @@ dependencies {
   api libraries.kotlinCoroutines
   api libraries.r2Shared
   api libraries.nyplDRMCore
-  api libraries.nyplDRMAdobeProvider
 
   implementation libraries.androidXAnnotation
   implementation libraries.slf4j
 
   api project(":org.librarysimplified.r2.drm.core")
+  api "org.librarysimplified.drm.adobe:org.librarysimplified.drm.adobe.provider:1.1.27"
 }
