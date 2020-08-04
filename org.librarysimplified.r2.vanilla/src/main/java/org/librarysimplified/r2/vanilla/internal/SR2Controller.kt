@@ -23,10 +23,10 @@ import org.librarysimplified.r2.api.SR2Event.SR2ReadingPositionChanged
 import org.librarysimplified.r2.api.SR2Locator
 import org.librarysimplified.r2.api.SR2Locator.SR2LocatorChapterEnd
 import org.librarysimplified.r2.api.SR2Locator.SR2LocatorPercent
+import org.librarysimplified.r2.drm.core.ContentProtectionProvider
 import org.librarysimplified.r2.drm.core.DrmProtectedFile
 import org.librarysimplified.r2.vanilla.internal.SR2CommandInternal.SR2CommandInternalAPI
 import org.librarysimplified.r2.vanilla.internal.SR2CommandInternal.SR2CommandInternalDelay
-import org.readium.r2.shared.publication.ContentProtection
 import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.util.getOrElse
 import org.readium.r2.streamer.Streamer
@@ -97,9 +97,12 @@ internal class SR2Controller private constructor(
 
 
       val contentProtections =
-        ServiceLoader.load(ContentProtection::class.java).toList()
-
-      this.logger.debug("${contentProtections.size} Content Protections loaded")
+        ServiceLoader.load(ContentProtectionProvider::class.java)
+          .map {
+            it.create(configuration.context).also { cp ->
+              this.logger.debug("created content protection of class ${cp::class.java.canonicalName}")
+            }
+          }
 
       val streamer = Streamer(
         context = configuration.context,

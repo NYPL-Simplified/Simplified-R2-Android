@@ -10,7 +10,7 @@ import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.util.File
 import org.readium.r2.shared.util.Try
 
-class AdobeAdeptContentProtection : ContentProtection {
+internal class AdobeAdeptContentProtection : ContentProtection {
 
   override suspend fun open(
     file: File,
