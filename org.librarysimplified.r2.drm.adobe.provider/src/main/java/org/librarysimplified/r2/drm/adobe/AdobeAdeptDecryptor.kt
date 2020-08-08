@@ -105,6 +105,8 @@ internal class AdobeAdeptDecryptor(private val rights: String, private val encry
       return Try.wrap {
         if (range == null)
           decrypt(range)
+        else if (range.isEmpty())
+          ByteArray(0)
         else
           readRange(range)
       }
@@ -233,7 +235,7 @@ private inline fun <S> Try.Companion.wrap(compute: () -> S): ResourceTry<S> =
 
 
 private fun LongRange.coerceToPositiveIncreasing() =
-  if (first >= last)
+  if (first > last)
     0L until 0L
   else
     LongRange(first.coerceAtLeast(0), last.coerceAtLeast(0))
