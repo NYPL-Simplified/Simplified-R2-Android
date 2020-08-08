@@ -246,14 +246,8 @@ private fun LongRange.requireLengthFitInt() =
 
 
 private fun Long.ceilMultipleOf(divisor: Long) =
-  if (this % divisor == 0L)
-    this
-  else
-    divisor * (this / divisor + 1)
+  divisor * (this / divisor + if (this % divisor == 0L) 0 else 1)
 
-private fun Long.floorMultipleOf(divisor: Long) = when {
-  this % divisor == 0L -> this
-  this < divisor -> 0
-  else -> divisor  * (this / divisor)
-}
+private fun Long.floorMultipleOf(divisor: Long) =
+  divisor * (this / divisor)
 
