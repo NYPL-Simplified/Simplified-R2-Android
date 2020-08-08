@@ -1,14 +1,12 @@
 package org.librarysimplified.r2.drm.adobe
 
 import org.readium.r2.shared.fetcher.Resource
-import org.readium.r2.shared.fetcher.ResourceTry
 import org.readium.r2.shared.fetcher.mapCatching
 import org.readium.r2.shared.publication.Link
 import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.publication.encryption.encryption
 import org.readium.r2.shared.util.getOrElse
 import org.slf4j.LoggerFactory
-import java.io.ByteArrayOutputStream
 import java.lang.IllegalStateException
 import kotlin.math.ceil
 
