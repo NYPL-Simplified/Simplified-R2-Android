@@ -6,6 +6,7 @@ import org.readium.r2.shared.fetcher.FailureResource
 import org.readium.r2.shared.fetcher.LazyResource
 import org.readium.r2.shared.fetcher.Resource
 import org.readium.r2.shared.fetcher.ResourceTry
+import org.readium.r2.shared.fetcher.TransformingResource
 import org.readium.r2.shared.fetcher.mapCatching
 import org.readium.r2.shared.publication.Link
 import org.readium.r2.shared.util.Try
@@ -43,32 +44,25 @@ internal class AdobeAdeptDecryptor(private val rights: String, private val encry
   }
 
   private class FullAdeptResource(
-    private val resource: Resource,
+    resource: Resource,
     private val encryption: AdobeAdeptEncryptionProperties,
-    private val rights: String
-  ) : BytesResource( {
+    rights: String
+  ) : TransformingResource(resource) {
 
-    val bytes = resource.read().mapCatching { bytes ->
-      org.nypl.drm.adobe.AdobeAdeptDecryptor(
-          encryption.resourceId,
-          encryption.algorithm,
-          encryption.originalLength ?: 0,
-          rights
-        ).use { decryptor ->
-          decryptor.decrypt(bytes, null, true)
-        }
-    }
+    private var decryptor = org.nypl.drm.adobe.AdobeAdeptDecryptor(
+      encryption.resourceId,
+      encryption.algorithm,
+      encryption.originalLength ?: 0,
+      rights
+    )
 
-    Pair(resource.link(), bytes)
-
-  } ) {
+    override suspend fun transform(data: ResourceTry<ByteArray>): ResourceTry<ByteArray> =
+      data.mapCatching { decryptor.decrypt(it, null, true) }
 
     override suspend fun length(): ResourceTry<Long> =
       encryption.originalLength
         ?.let { Try.success(it) }
         ?: super.length()
-
-    override suspend fun close() = resource.close()
   }
 
   private class CbcAdeptResource(
@@ -83,6 +77,7 @@ internal class AdobeAdeptDecryptor(private val rights: String, private val encry
       encryption.originalLength ?: 0,
       rights
     )
+
     private lateinit var _length: ResourceTry<Long>
 
     init {

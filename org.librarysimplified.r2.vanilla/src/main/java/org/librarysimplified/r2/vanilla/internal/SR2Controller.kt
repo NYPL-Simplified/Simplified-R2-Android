@@ -112,7 +112,7 @@ internal class SR2Controller private constructor(
       )
       val file = DrmProtectedFile(bookFile, adobeRightsFile)
       val publication = runBlocking {
-        streamer.open(file, askCredentials = false)
+        streamer.open(file, allowUserInteraction = false)
       }.getOrElse {
         throw IOException("Failed to open EPUB", it)
       }

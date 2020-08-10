@@ -15,7 +15,7 @@ internal class AdobeAdeptContentProtection : ContentProtection {
   override suspend fun open(
     file: File,
     fetcher: Fetcher,
-    askCredentials: Boolean,
+    allowUserInteraction: Boolean,
     credentials: String?,
     sender: Any?,
     onAskCredentials: OnAskCredentials?
