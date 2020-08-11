@@ -28,6 +28,8 @@ import org.librarysimplified.r2.drm.core.DrmProtectedFile
 import org.librarysimplified.r2.vanilla.internal.SR2CommandInternal.SR2CommandInternalAPI
 import org.librarysimplified.r2.vanilla.internal.SR2CommandInternal.SR2CommandInternalDelay
 import org.readium.r2.shared.publication.Publication
+import org.readium.r2.shared.publication.services.isRestricted
+import org.readium.r2.shared.publication.services.protectionError
 import org.readium.r2.shared.util.getOrElse
 import org.readium.r2.streamer.Streamer
 import org.readium.r2.streamer.parser.epub.EpubParser
@@ -116,6 +118,9 @@ internal class SR2Controller private constructor(
       }.getOrElse {
         throw IOException("Failed to open EPUB", it)
       }
+
+      if (publication.isRestricted)
+        throw IOException("Failed to unlock EPUB", publication.protectionError)
 
       this.logger.debug("publication title: {}", publication.metadata.title)
       val port = this.fetchUnusedHTTPPort()

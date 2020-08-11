@@ -1,7 +1,6 @@
 package org.librarysimplified.r2.drm.adobe
 
 import org.nypl.drm.core.DRMException
-import org.readium.r2.shared.fetcher.BytesResource
 import org.readium.r2.shared.fetcher.FailureResource
 import org.readium.r2.shared.fetcher.LazyResource
 import org.readium.r2.shared.fetcher.Resource
