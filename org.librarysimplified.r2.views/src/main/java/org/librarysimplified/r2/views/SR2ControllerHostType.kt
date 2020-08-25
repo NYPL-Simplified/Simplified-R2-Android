@@ -9,6 +9,6 @@ interface SR2ControllerHostType : SR2NavigationControllerType {
 
   fun onControllerBecameAvailable(
     controller: SR2ControllerType,
-    isFirstStartup: Boolean)
-
+    isFirstStartup: Boolean
+  )
 }

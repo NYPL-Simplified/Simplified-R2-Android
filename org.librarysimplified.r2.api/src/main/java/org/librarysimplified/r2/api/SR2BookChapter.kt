@@ -6,4 +6,5 @@ package org.librarysimplified.r2.api
 
 data class SR2BookChapter(
   val chapterIndex: Int,
-  val title: String)
+  val title: String
+)

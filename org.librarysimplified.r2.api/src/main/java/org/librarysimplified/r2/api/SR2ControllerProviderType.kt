@@ -31,5 +31,4 @@ interface SR2ControllerProviderType {
   fun createHere(
     configuration: SR2ControllerConfiguration
   ): SR2ControllerType
-
 }

@@ -45,7 +45,7 @@ class DemoDatabase(private val context: Context) {
   ) : Serializable
 
   private fun countBookmarks(map: Map<String, List<SerializableBookmark>>): Int {
-    return map.entries.fold(0, { acc : Int, entry -> acc + entry.value.size })
+    return map.entries.fold(0, { acc: Int, entry -> acc + entry.value.size })
   }
 
   fun bookmarkFindLastReadLocation(
@@ -100,7 +100,7 @@ class DemoDatabase(private val context: Context) {
     val existing = this.bookmarks[bookId]?.toMutableList() ?: mutableListOf()
     when (bookmark.type) {
       EXPLICIT -> {
-
+        // Nothing
       }
       LAST_READ -> {
         existing.removeAll { it.type == LAST_READ }

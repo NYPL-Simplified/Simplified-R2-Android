@@ -5,11 +5,11 @@ import androidx.annotation.UiThread
 import org.librarysimplified.r2.api.SR2Command
 import org.librarysimplified.r2.api.SR2ControllerCommandQueueType
 import org.librarysimplified.r2.ui_thread.SR2UIThread
-import org.librarysimplified.r2.vanilla.internal.ReaderTheme.DARK
-import org.librarysimplified.r2.vanilla.internal.ReaderTheme.DAY
-import org.librarysimplified.r2.vanilla.internal.ReaderTheme.LIGHT
-import org.librarysimplified.r2.vanilla.internal.ReaderTheme.NIGHT
-import org.librarysimplified.r2.vanilla.internal.ReaderTheme.SEPIA
+import org.librarysimplified.r2.vanilla.internal.SR2ReaderTheme.DARK
+import org.librarysimplified.r2.vanilla.internal.SR2ReaderTheme.DAY
+import org.librarysimplified.r2.vanilla.internal.SR2ReaderTheme.LIGHT
+import org.librarysimplified.r2.vanilla.internal.SR2ReaderTheme.NIGHT
+import org.librarysimplified.r2.vanilla.internal.SR2ReaderTheme.SEPIA
 import org.slf4j.LoggerFactory
 
 /**
@@ -73,7 +73,7 @@ internal class SR2JavascriptAPI(
 
   override fun setTextSize(value: Int) {
     // Note: The js property name is 'fontSize' not 'textSize'
-    setUserProperty("fontSize", "${value}%")
+    setUserProperty("fontSize", "$value%")
   }
 
   override fun setTextAlign(value: String) {
@@ -97,7 +97,7 @@ internal class SR2JavascriptAPI(
     setUserProperty("wordSpacing", "${value}rem")
   }
 
-  override fun setTheme(value: ReaderTheme) {
+  override fun setTheme(value: SR2ReaderTheme) {
     when (value) {
       LIGHT, DAY -> {
         setUserProperty("appearance", "readium-default-on")

@@ -4,4 +4,5 @@ import androidx.fragment.app.Fragment
 
 internal data class SR2TOCPage(
   val title: String,
-  val fragmentConstructor: () -> Fragment)
+  val fragmentConstructor: () -> Fragment
+)

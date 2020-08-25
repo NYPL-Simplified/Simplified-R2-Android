@@ -9,5 +9,4 @@ interface SR2NavigationControllerType {
   fun onNavigationClose()
 
   fun onNavigationOpenTableOfContents()
-
 }

@@ -52,5 +52,4 @@ class SR2TOCFragment : Fragment() {
 
     return view
   }
-
 }

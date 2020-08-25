@@ -14,19 +14,15 @@ buildscript {
 
   dependencies {
     classpath "biz.aQute.bnd:biz.aQute.bnd.gradle:5.1.1"
-    classpath "com.vanniktech:gradle-android-junit-jacoco-plugin:0.16.0"
     classpath "digital.wup:android-maven-publish:3.6.3"
-    classpath "io.codearte.gradle.nexus:gradle-nexus-staging-plugin:0.21.2"
     classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
-    classpath 'com.android.tools.build:gradle:4.0.0'
+    classpath "com.android.tools.build:gradle:4.0.1"
   }
 }
 
 plugins {
   id "com.github.ben-manes.versions" version "0.27.0"
-  id "com.vanniktech.android.junit.jacoco" version "0.15.0"
   id "digital.wup.android-maven-publish" version "3.6.3"
-  id "io.codearte.nexus-staging" version "0.21.2"
   id "ru.vyarus.animalsniffer" version "1.5.1"
 }
 
@@ -58,6 +54,16 @@ ext {
   } else {
     logger.warn("org.librarysimplified.nexus.depend is set: We will depend on artifacts on the NYPL Nexus")
     useNYPLNexusDepend = true
+  }
+
+  if (project.hasProperty("org.librarysimplified.directory.publish")) {
+    useDirectoryPublishPath = project.property("org.librarysimplified.directory.publish")
+    useDirectoryPublish = true
+    logger.warn("org.librarysimplified.directory.publish is set: We will publish artifacts to ${useDirectoryPublishPath}")
+  } else {
+    logger.warn("org.librarysimplified.directory.publish is not set: We will not publish artifacts to a custom directory")
+    useDirectoryPublish = false
+    useDirectoryPublishPath = null
   }
 }
 
@@ -95,15 +101,6 @@ ext.libraries = [
   nyplDRMCore               : "org.librarysimplified.drm:org.librarysimplified.drm.core:1.1.2",
   nyplDRMAdobeProvider      : "org.librarysimplified.drm.adobe:org.librarysimplified.drm.adobe.provider:1.1.27",
 ]
-
-apply plugin: "io.codearte.nexus-staging"
-apply plugin: "com.vanniktech.android.junit.jacoco"
-
-nexusStaging {
-  packageGroup = "org.librarysimplified"
-  numberOfRetries = 32
-  delayBetweenRetriesInMillis = 2000
-}
 
 allprojects {
   group = project.ext["GROUP"]
@@ -215,109 +212,6 @@ Automatic-Module-Name: ${POM_AUTOMATIC_MODULE_NAME}
     from "src/main/java", "src/main/resources"
   }
 
-  apply plugin: "digital.wup.android-maven-publish"
-  apply plugin: "signing"
-
-  publishing {
-    publications {
-      basicJar(MavenPublication) {
-
-        switch (POM_PACKAGING) {
-          case "jar":
-            from components.java
-            break
-
-          case "apk":
-            break
-
-          case "aar":
-            from components.android
-            break
-        }
-
-        artifact sourcesJar
-        artifact javadocsJar
-
-        pom {
-          artifactId = POM_ARTIFACT_ID
-          name = POM_NAME
-          packaging = POM_PACKAGING
-          description = POM_DESCRIPTION
-          url = POM_URL
-
-          scm {
-            connection = POM_SCM_CONNECTION
-            developerConnection = POM_SCM_DEV_CONNECTION
-            url = POM_SCM_URL
-          }
-
-          licenses {
-            license {
-              name = POM_LICENCE_NAME
-              url = POM_LICENCE_URL
-            }
-          }
-
-          developers {
-            developer {
-              id = "io7m"
-              name = "Mark Raynsford"
-              email = "code@io7m.com"
-              url = "https://www.io7m.com"
-            }
-          }
-        }
-      }
-    }
-
-    repositories {
-      if (useNYPLNexusPublish) {
-        logger.info("using NYPL Nexus repository for publication")
-
-        maven {
-          def releasesRepoUrl = "https://nexus.librarysimplified.org:8443/nexus/content/repositories/releases-no-drm/"
-          def snapshotsRepoUrl = "https://nexus.librarysimplified.org:8443/nexus/content/repositories/snapshots-no-drm/"
-          url = version.endsWith("SNAPSHOT") ? snapshotsRepoUrl : releasesRepoUrl
-          credentials(PasswordCredentials) {
-            username findProperty("org.librarysimplified.nexus.username")
-            password findProperty("org.librarysimplified.nexus.password")
-          }
-        }
-      } else {
-        logger.info("using Maven Central repository for publication")
-
-        maven {
-          def releasesRepoUrl = "https://oss.sonatype.org/service/local/staging/deploy/maven2/"
-          def snapshotsRepoUrl = "https://oss.sonatype.org/content/repositories/snapshots/"
-          url = version.endsWith("SNAPSHOT") ? snapshotsRepoUrl : releasesRepoUrl
-          credentials(PasswordCredentials) {
-            username nexusUsername
-            password nexusPassword
-          }
-        }
-      }
-    }
-  }
-
-  signing {
-    useGpgCmd()
-    sign publishing.publications.basicJar
-  }
-
-  tasks.withType(Sign) { task ->
-    def isSnapshot = version.endsWith("SNAPSHOT")
-
-    // Sign release versions only; not snapshots
-    onlyIf {
-      if (isSnapshot) {
-        logger.warn("$POM_NAME: '$version' is a snapshot version; artifacts will not be signed")
-      } else {
-        logger.info("$POM_NAME: '$version' is a release version; artifacts will be signed")
-      }
-      return !isSnapshot
-    }
-  }
-
   repositories {
     mavenLocal()
     mavenCentral()
@@ -337,3 +231,21 @@ Automatic-Module-Name: ${POM_AUTOMATIC_MODULE_NAME}
     google()
   }
 }
+
+// Configure publishing for appropriate projects
+
+subprojects { project ->
+  pluginManager.withPlugin("java") {
+    println("Configuring publishing for ${project} (${POM_PACKAGING})")
+    apply from: file("$rootDir/publishing.gradle")
+  }
+  pluginManager.withPlugin("com.android.library") {
+    println("Configuring publishing for ${project} (${POM_PACKAGING})")
+    apply from: file("$rootDir/publishing.gradle")
+  }
+}
+
+// Add ktlint tasks to root project. This executes faster than configuring
+// the tasks for each subproject individually.
+
+apply from: file("$rootDir/ktlint.gradle")

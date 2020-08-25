@@ -12,5 +12,4 @@ interface SR2ControllerCommandQueueType {
    */
 
   fun submitCommand(command: SR2Command)
-
 }

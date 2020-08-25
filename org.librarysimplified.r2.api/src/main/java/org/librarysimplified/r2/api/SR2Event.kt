@@ -52,10 +52,10 @@ sealed class SR2Event {
   ) : SR2Event() {
 
     init {
-      require(this.chapterProgress in 0.0.. 1.0) {
+      require(this.chapterProgress in 0.0..1.0) {
         "Chapter progress ${this.chapterProgress} must be in the range [0, 1]"
       }
-      require(this.bookProgress in 0.0.. 1.0) {
+      require(this.bookProgress in 0.0..1.0) {
         "Book progress ${this.bookProgress} must be in the range [0, 1]"
       }
     }

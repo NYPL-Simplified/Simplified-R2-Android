@@ -16,7 +16,8 @@ data class SR2BookMetadata(
    * The chapters of the book in reading order.
    */
 
-  val readingOrder: List<SR2BookChapter>) {
+  val readingOrder: List<SR2BookChapter>
+) {
 
   init {
     require(this.readingOrder.sortedBy { it.chapterIndex } == this.readingOrder) {

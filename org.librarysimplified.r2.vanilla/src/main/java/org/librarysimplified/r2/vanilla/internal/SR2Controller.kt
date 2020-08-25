@@ -489,11 +489,7 @@ internal class SR2Controller private constructor(
         chapterProgress
 
       this.logger.debug(
-        "onReadingPositionChanged:"
-          + " chapterIndex=$chapterIndex,"
-          + " currentPage=$currentPage,"
-          + " pageCount=$pageCount,"
-          + " chapterProgress=$chapterProgress"
+        """onReadingPositionChanged: chapterIndex=$chapterIndex, currentPage=$currentPage, pageCount=$pageCount, chapterProgress=$chapterProgress"""
       )
 
       /*

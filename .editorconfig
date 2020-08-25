@@ -1,10 +1,13 @@
 [*.kt]
-indent_size = 2
-insert_final_newline = true
-disabled_rules = import-ordering
+indent_size=2
+insert_final_newline=true
+disabled_rules=import-ordering
 
 [*.gradle]
-indent_size = 2
+indent_size=2
+insert_final_newline=true
 
 [*.xml]
-indent_size = 2
+indent_size=2
+insert_final_newline=true
+

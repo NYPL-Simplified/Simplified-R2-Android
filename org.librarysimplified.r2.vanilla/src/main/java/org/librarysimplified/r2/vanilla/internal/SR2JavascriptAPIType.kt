@@ -51,7 +51,7 @@ internal interface SR2JavascriptAPIType {
   fun setWordSpacing(value: Double)
 
   @UiThread
-  fun setTheme(value: ReaderTheme)
+  fun setTheme(value: SR2ReaderTheme)
 
   /**
    * Set the current chapter position. This must be in the range [0, 1].
