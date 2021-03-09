@@ -6,6 +6,7 @@ import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebView
+import android.widget.ImageButton
 import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.annotation.UiThread
@@ -17,6 +18,7 @@ import com.google.common.util.concurrent.MoreExecutors
 import io.reactivex.disposables.Disposable
 import org.librarysimplified.r2.api.SR2Bookmark
 import org.librarysimplified.r2.api.SR2Bookmark.Type.EXPLICIT
+import org.librarysimplified.r2.api.SR2ColorScheme
 import org.librarysimplified.r2.api.SR2Command
 import org.librarysimplified.r2.api.SR2ControllerConfiguration
 import org.librarysimplified.r2.api.SR2ControllerType
@@ -60,6 +62,9 @@ class SR2ReaderFragment private constructor(
   private lateinit var container: ViewGroup
   private lateinit var loadingView: ProgressBar
   private lateinit var menuBookmarkItem: MenuItem
+  private lateinit var pageButtonPrevious: ImageButton
+  private lateinit var pageButtons: ViewGroup
+  private lateinit var pageButtonNext: ImageButton
   private lateinit var positionPageView: TextView
   private lateinit var positionPercentView: TextView
   private lateinit var positionTitleView: TextView
@@ -102,6 +107,12 @@ class SR2ReaderFragment private constructor(
       view.findViewById(R.id.reader2_position_percent)
     this.loadingView =
       view.findViewById(R.id.readerLoading)
+    this.pageButtons =
+      view.findViewById(R.id.readerPageButtons)
+    this.pageButtonPrevious =
+      view.findViewById(R.id.readerPagePrevious)
+    this.pageButtonNext =
+      view.findViewById(R.id.readerPageNext)
 
     this.toolbar.inflateMenu(R.menu.sr2_reader_menu)
     this.menuBookmarkItem = this.toolbar.menu.findItem(R.id.readerMenuAddBookmark)
@@ -111,6 +122,8 @@ class SR2ReaderFragment private constructor(
       .setOnMenuItemClickListener { this.onReaderMenuTOCSelected() }
     this.toolbar.menu.findItem(R.id.readerMenuAddBookmark)
       .setOnMenuItemClickListener { this.onReaderMenuAddBookmarkSelected() }
+
+    this.pageButtons.visibility = View.INVISIBLE
 
     this.configureForTheme(this.controller?.themeNow() ?: this.parameters.theme)
     this.viewsShowLoading()
@@ -146,6 +159,27 @@ class SR2ReaderFragment private constructor(
     this.positionPageView.setTextColor(foreground)
     this.positionTitleView.setTextColor(foreground)
     this.positionPercentView.setTextColor(foreground)
+
+    return when (theme.colorScheme) {
+      SR2ColorScheme.DARK_TEXT_LIGHT_BACKGROUND -> {
+        this.pageButtonPrevious.setBackgroundResource(R.drawable.sr2_button_white)
+        this.pageButtonPrevious.setImageResource(R.drawable.sr2_go_prev_dark)
+        this.pageButtonNext.setBackgroundResource(R.drawable.sr2_button_white)
+        this.pageButtonNext.setImageResource(R.drawable.sr2_go_next_dark)
+      }
+      SR2ColorScheme.LIGHT_TEXT_DARK_BACKGROUND -> {
+        this.pageButtonPrevious.setBackgroundResource(R.drawable.sr2_button_black)
+        this.pageButtonPrevious.setImageResource(R.drawable.sr2_go_prev_light)
+        this.pageButtonNext.setBackgroundResource(R.drawable.sr2_button_black)
+        this.pageButtonNext.setImageResource(R.drawable.sr2_go_next_light)
+      }
+      SR2ColorScheme.DARK_TEXT_ON_SEPIA -> {
+        this.pageButtonPrevious.setBackgroundResource(R.drawable.sr2_button_beige)
+        this.pageButtonPrevious.setImageResource(R.drawable.sr2_go_prev_dark)
+        this.pageButtonNext.setBackgroundResource(R.drawable.sr2_button_beige)
+        this.pageButtonNext.setImageResource(R.drawable.sr2_go_next_dark)
+      }
+    }
   }
 
   private fun openSettings() {
@@ -228,6 +262,13 @@ class SR2ReaderFragment private constructor(
       SR2ControllerBecameAvailable(SR2ControllerReference(controller, isFirstStartup))
     )
     this.toolbar.title = controller.bookMetadata.title
+
+    this.pageButtonNext.setOnClickListener {
+      controller.submitCommand(SR2Command.OpenPageNext)
+    }
+    this.pageButtonPrevious.setOnClickListener {
+      controller.submitCommand(SR2Command.OpenPagePrevious)
+    }
   }
 
   private fun onBookOpenFailed(e: Throwable) {
@@ -352,6 +393,9 @@ class SR2ReaderFragment private constructor(
     if (this.webView.visibility != View.VISIBLE) {
       this.webView.visibility = View.VISIBLE
     }
+    if (this.pageButtons.visibility != View.VISIBLE) {
+      this.pageButtons.visibility = View.VISIBLE
+    }
     if (this.loadingView.visibility != View.INVISIBLE) {
       this.loadingView.visibility = View.INVISIBLE
     }
@@ -361,6 +405,9 @@ class SR2ReaderFragment private constructor(
   private fun viewsShowLoading() {
     if (this.webView.visibility != View.INVISIBLE) {
       this.webView.visibility = View.INVISIBLE
+    }
+    if (this.pageButtons.visibility != View.INVISIBLE) {
+      this.pageButtons.visibility = View.INVISIBLE
     }
     if (this.loadingView.visibility != View.VISIBLE) {
       this.loadingView.visibility = View.VISIBLE

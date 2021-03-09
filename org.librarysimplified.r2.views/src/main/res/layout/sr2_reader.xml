@@ -23,8 +23,10 @@
     android:id="@+id/readerWebView"
     android:layout_width="0dp"
     android:layout_height="0dp"
-    android:layout_marginTop="8dp"
-    android:layout_marginBottom="8dp"
+    android:layout_marginStart="24dp"
+    android:layout_marginTop="24dp"
+    android:layout_marginEnd="24dp"
+    android:layout_marginBottom="24dp"
     app:layout_constraintBottom_toTopOf="@+id/readerProgressContainer"
     app:layout_constraintEnd_toEndOf="parent"
     app:layout_constraintStart_toStartOf="parent"
@@ -53,5 +55,38 @@
     app:layout_constraintEnd_toEndOf="parent"
     app:layout_constraintStart_toStartOf="parent"
     app:layout_constraintTop_toTopOf="parent" />
+
+  <androidx.constraintlayout.widget.ConstraintLayout
+    android:id="@+id/readerPageButtons"
+    android:layout_width="0dp"
+    android:layout_height="wrap_content"
+    app:layout_constraintBottom_toBottomOf="parent"
+    app:layout_constraintEnd_toEndOf="parent"
+    app:layout_constraintStart_toStartOf="parent"
+    app:layout_constraintTop_toTopOf="parent">
+
+    <ImageButton
+      android:id="@+id/readerPagePrevious"
+      android:layout_width="24dp"
+      android:layout_height="128dp"
+      android:contentDescription="@string/readerAccessibilityPagePrevious"
+      android:src="@drawable/sr2_go_prev_dark"
+      android:background="@drawable/sr2_button_white"
+      app:layout_constraintBottom_toBottomOf="parent"
+      app:layout_constraintStart_toStartOf="parent"
+      app:layout_constraintTop_toTopOf="parent" />
+
+    <ImageButton
+      android:id="@+id/readerPageNext"
+      android:layout_width="24dp"
+      android:layout_height="128dp"
+      android:contentDescription="@string/readerAccessibilityPageNext"
+      android:src="@drawable/sr2_go_next_dark"
+      android:background="@drawable/sr2_button_white"
+      app:layout_constraintBottom_toBottomOf="parent"
+      app:layout_constraintEnd_toEndOf="parent"
+      app:layout_constraintTop_toTopOf="parent" />
+
+  </androidx.constraintlayout.widget.ConstraintLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>

@@ -24,6 +24,8 @@
   <string name="tocChapterIndexed">%1$d. %2$s</string>
   <string name="tocTitle">Table Of Contents</string>
 
+  <string name="readerAccessibilityPageNext">Go to the next page.</string>
+  <string name="readerAccessibilityPagePrevious">Go to the previous page.</string>
   <string name="settingsAccessibilitySetSans">Set book font to sans-serif.</string>
   <string name="settingsAccessibilitySetSerif">Set book font to serif.</string>
   <string name="settingsAccessibilitySetDyslexic">Set book font to Open Dyslexic.</string>
