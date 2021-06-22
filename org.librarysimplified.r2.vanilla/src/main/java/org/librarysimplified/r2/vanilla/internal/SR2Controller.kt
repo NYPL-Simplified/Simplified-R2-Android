@@ -32,6 +32,8 @@ import org.librarysimplified.r2.api.SR2Event.SR2ReadingPositionChanged
 import org.librarysimplified.r2.api.SR2Locator
 import org.librarysimplified.r2.api.SR2Locator.SR2LocatorChapterEnd
 import org.librarysimplified.r2.api.SR2Locator.SR2LocatorPercent
+import org.librarysimplified.r2.api.SR2ScrollingMode
+import org.librarysimplified.r2.api.SR2ScrollingMode.SCROLLING_MODE_DISABLED
 import org.librarysimplified.r2.api.SR2Theme
 import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.publication.services.isRestricted
@@ -177,6 +179,10 @@ internal class SR2Controller private constructor(
   private var themeMostRecent: SR2Theme =
     this.configuration.theme
 
+  @Volatile
+  private var scrollingMode: SR2ScrollingMode =
+    SCROLLING_MODE_DISABLED
+
   private val eventSubject: Subject<SR2Event> =
     PublishSubject.create<SR2Event>()
       .toSerialized()
@@ -287,7 +293,32 @@ internal class SR2Controller private constructor(
         this.executeCommandThemeSet(command, apiCommand)
       is SR2Command.OpenLink ->
         this.executeCommandOpenLink(apiCommand)
+      is SR2Command.ScrollingModeSet ->
+        this.executeCommandScrollingMode(apiCommand)
     }
+  }
+
+  /**
+   * Execute the [SR2Command.ScrollingModeSet] command.
+   */
+
+  private fun executeCommandScrollingMode(
+    apiCommand: SR2Command.ScrollingModeSet
+  ): ListenableFuture<*> {
+    return this.executeScrollingModeSet(waitForWebViewAvailability(), apiCommand.scrollingMode)
+  }
+
+  private fun executeScrollingModeSet(
+    viewConnection: SR2WebViewConnectionType,
+    scrollingMode: SR2ScrollingMode
+  ): ListenableFuture<*> {
+    this.scrollingMode = scrollingMode
+    val future = viewConnection.setScrolling(scrollingMode)
+    future.addListener(
+      { this.eventSubject.onNext(SR2Event.SR2ScrollingModeChanged(scrollingMode)) },
+      MoreExecutors.directExecutor()
+    )
+    return future
   }
 
   /**
@@ -605,7 +636,7 @@ internal class SR2Controller private constructor(
       LoggerFactory.getLogger(JavascriptAPIReceiver::class.java)
 
     @android.webkit.JavascriptInterface
-    override fun onReadingPositionChanged(
+    override fun onReadingPositionChangedPaginated(
       currentPage: Int,
       pageCount: Int
     ) {
@@ -651,6 +682,52 @@ internal class SR2Controller private constructor(
           chapterProgress = chapterProgress,
           currentPage = currentPage,
           pageCount = pageCount,
+          bookProgress = this@SR2Controller.currentBookProgress
+        )
+      )
+    }
+
+    @android.webkit.JavascriptInterface
+    override fun onReadingPositionChangedScrolling(
+      position: Double
+    ) {
+      val chapterTitle =
+        this@SR2Controller.currentChapter.title
+      val currentChapter =
+        this@SR2Controller.currentChapter
+      this@SR2Controller.currentBookProgress =
+        this@SR2Controller.getBookProgress(position)
+      this@SR2Controller.currentChapterProgress =
+        position
+
+      /*
+       * This is pure paranoia; we only update the last-read location if the new position
+       * doesn't appear to point to the very start of the book. This is to defend against
+       * any future bugs that might cause a "reading position change" event to be published
+       * before the user's _real_ last-read position has been restored using a command or
+       * bookmark. If this happened, we'd accidentally overwrite the user's reading position with
+       * a pointer to the start of the book, so this check prevents that.
+       */
+
+      if (currentChapter.chapterIndex != 0 || position > 0.000_001) {
+        this@SR2Controller.queueExecutor.execute {
+          this@SR2Controller.updateBookmarkLastRead(
+            title = chapterTitle,
+            locator = SR2LocatorPercent(
+              chapterHref = currentChapter.chapterHref,
+              chapterProgress = position
+            )
+          )
+        }
+      }
+
+      this@SR2Controller.eventSubject.onNext(
+        SR2ReadingPositionChanged(
+          chapterHref = currentChapter.chapterHref,
+          chapterTitle = chapterTitle,
+          chapterProgress = position,
+          currentPage = 1,
+          pageCount = 1,
           bookProgress = this@SR2Controller.currentBookProgress
         )
       )

@@ -7,6 +7,9 @@ import com.google.common.util.concurrent.MoreExecutors
 import com.google.common.util.concurrent.SettableFuture
 import org.librarysimplified.r2.api.SR2Command
 import org.librarysimplified.r2.api.SR2ControllerCommandQueueType
+import org.librarysimplified.r2.api.SR2ScrollingMode
+import org.librarysimplified.r2.api.SR2ScrollingMode.SCROLLING_MODE_DISABLED
+import org.librarysimplified.r2.api.SR2ScrollingMode.SCROLLING_MODE_ENABLED
 import org.librarysimplified.r2.ui_thread.SR2UIThread
 import org.librarysimplified.r2.vanilla.internal.SR2ReadiumInternalTheme.DARK
 import org.librarysimplified.r2.vanilla.internal.SR2ReadiumInternalTheme.DAY
@@ -137,6 +140,19 @@ internal class SR2JavascriptAPI(
   @UiThread
   override fun setProgression(progress: Double): ListenableFuture<String> {
     return this.executeJavascript("readium.scrollToPosition($progress);")
+  }
+
+  @UiThread
+  override fun setScrollMode(value: SR2ScrollingMode): ListenableFuture<String> {
+    return when (value) {
+      SCROLLING_MODE_ENABLED -> this.setUserProperty("scroll", "readium-scroll-on")
+      SCROLLING_MODE_DISABLED -> this.setUserProperty("scroll", "readium-scroll-off")
+    }
+  }
+
+  @UiThread
+  override fun broadcastScrollPosition(): ListenableFuture<String> {
+    return this.executeJavascript("readium.broadcastScrollPosition();")
   }
 
   @UiThread

@@ -119,4 +119,12 @@ sealed class SR2Command {
   data class ThemeSet(
     val theme: SR2Theme
   ) : SR2Command()
+
+  /**
+   * Set the scrolling mode for the reader.
+   */
+
+  data class ScrollingModeSet(
+    val scrollingMode: SR2ScrollingMode
+  ) : SR2Command()
 }

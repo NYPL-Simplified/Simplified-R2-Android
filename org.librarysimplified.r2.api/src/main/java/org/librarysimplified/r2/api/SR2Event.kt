@@ -121,6 +121,14 @@ sealed class SR2Event {
   ) : SR2Event()
 
   /**
+   * The scrolling mode was changed.
+   */
+
+  data class SR2ScrollingModeChanged(
+    val scrollingMode: SR2ScrollingMode
+  ) : SR2Event()
+
+  /**
    * The set of events related to commands.
    */
 

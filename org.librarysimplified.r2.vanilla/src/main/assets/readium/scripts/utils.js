@@ -23,6 +23,13 @@ var readium = (function() {
     var pageWidth = 1;
 
     function onScrollPositionChanged() {
+      if (isScrollModeEnabled()) {
+        var scrollY        = window.scrollY;
+        var documentHeight = document.scrollingElement.scrollHeight;
+        Android.onReadingPositionChangedScrolling(scrollY / documentHeight);
+        return;
+      }
+
       var scrollX       = window.scrollX;
       var documentWidth = document.scrollingElement.scrollWidth;
 
@@ -32,7 +39,7 @@ var readium = (function() {
       var pageIndex1    = pageIndexRaw + 1;
       var pageIndex     = Math.max(1, pageIndex1);
 
-      Android.onReadingPositionChanged(pageIndex, pageCount);
+      Android.onReadingPositionChangedPaginated(pageIndex, pageCount);
     }
 
     function onViewportWidthChanged() {
@@ -185,7 +192,7 @@ var readium = (function() {
         'scrollToStart': scrollToStart,
         'scrollToEnd': scrollToEnd,
         'setProperty': setProperty,
-        'removeProperty': removeProperty
+        'removeProperty': removeProperty,
+        'broadcastScrollPosition': onScrollPositionChanged
     };
-
 })();

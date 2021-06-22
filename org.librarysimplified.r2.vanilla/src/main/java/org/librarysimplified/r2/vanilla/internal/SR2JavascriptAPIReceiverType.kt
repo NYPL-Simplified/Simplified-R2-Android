@@ -7,14 +7,28 @@ package org.librarysimplified.r2.vanilla.internal
 internal interface SR2JavascriptAPIReceiverType {
 
   /**
-   * The reading position has changed.
+   * The reading position has changed in paginated mode.
+   *
+   * @param position The position within the chapter in the range `[0, 1]`
+   */
+
+  @android.webkit.JavascriptInterface
+  fun onReadingPositionChangedScrolling(
+    position: Double
+  )
+
+  /**
+   * The reading position has changed in paginated mode.
    *
    * @param currentPage The page position within the chapter.
    * @param pageCount Total pages within the chapter with the current styling.
    */
 
   @android.webkit.JavascriptInterface
-  fun onReadingPositionChanged(currentPage: Int, pageCount: Int)
+  fun onReadingPositionChangedPaginated(
+    currentPage: Int,
+    pageCount: Int
+  )
 
   /** The center of the screen was tapped. */
 

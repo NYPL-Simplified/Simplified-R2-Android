@@ -27,6 +27,7 @@ import org.librarysimplified.r2.api.SR2Event.SR2Error.SR2WebViewInaccessible
 import org.librarysimplified.r2.api.SR2Event.SR2ExternalLinkSelected
 import org.librarysimplified.r2.api.SR2Event.SR2OnCenterTapped
 import org.librarysimplified.r2.api.SR2Event.SR2ReadingPositionChanged
+import org.librarysimplified.r2.api.SR2Event.SR2ScrollingModeChanged
 import org.librarysimplified.r2.api.SR2Event.SR2ThemeChanged
 import org.librarysimplified.r2.ui_thread.SR2UIThread
 import org.librarysimplified.r2.vanilla.SR2Controllers
@@ -119,6 +120,7 @@ class DemoActivity : AppCompatActivity() {
       val lastRead = database.bookmarkFindLastReadLocation(bookId, reference.controller.bookMetadata)
       reference.controller.submitCommand(SR2Command.BookmarksLoad(database.bookmarksFor(bookId)))
       reference.controller.submitCommand(SR2Command.OpenChapter(lastRead.locator))
+      // reference.controller.submitCommand(SR2Command.ScrollingModeSet(SR2ScrollingMode.SCROLLING_MODE_ENABLED))
     } else {
       // Refresh whatever the controller was looking at previously.
       reference.controller.submitCommand(SR2Command.Refresh)
@@ -228,6 +230,7 @@ class DemoActivity : AppCompatActivity() {
       is SR2ChapterNonexistent,
       is SR2WebViewInaccessible,
       is SR2ExternalLinkSelected,
+      is SR2ScrollingModeChanged,
       is SR2CommandExecutionStarted,
       is SR2CommandExecutionRunningLong,
       is SR2CommandExecutionSucceeded,

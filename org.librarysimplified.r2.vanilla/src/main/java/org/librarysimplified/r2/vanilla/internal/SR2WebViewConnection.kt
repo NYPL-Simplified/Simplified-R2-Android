@@ -6,6 +6,9 @@ import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
 import com.google.common.util.concurrent.SettableFuture
 import org.librarysimplified.r2.api.SR2ControllerCommandQueueType
+import org.librarysimplified.r2.api.SR2ScrollingMode
+import org.librarysimplified.r2.api.SR2ScrollingMode.SCROLLING_MODE_DISABLED
+import org.librarysimplified.r2.api.SR2ScrollingMode.SCROLLING_MODE_ENABLED
 import org.slf4j.LoggerFactory
 import java.util.UUID
 import java.util.concurrent.ExecutorService
@@ -48,26 +51,46 @@ internal class SR2WebViewConnection(
       val webChromeClient = SR2WebChromeClient()
       webView.webChromeClient = webChromeClient
       webView.settings.javaScriptEnabled = true
-      webView.isVerticalScrollBarEnabled = false
-      webView.isHorizontalScrollBarEnabled = false
-
-      /*
-       * Disable manual scrolling on the web view. Scrolling is controlled via the javascript API.
-       */
-
-      webView.setOnTouchListener { v, event ->
-        event.action == MotionEvent.ACTION_MOVE
-      }
-
       webView.addJavascriptInterface(jsReceiver, "Android")
 
-      return SR2WebViewConnection(
+      val connection = SR2WebViewConnection(
         jsAPI = SR2JavascriptAPI(webView, commandQueue),
         commandQueue = commandQueue,
         webView = webView,
         requestQueue = requestQueue,
         uiExecutor = uiExecutor
       )
+      connection.setScrollingDirect(SCROLLING_MODE_DISABLED)
+      return connection
+    }
+  }
+
+  private fun setScrollingDirect(
+    mode: SR2ScrollingMode
+  ) {
+    return when (mode) {
+      SCROLLING_MODE_ENABLED -> {
+        this.webView.isVerticalScrollBarEnabled = true
+        this.webView.isHorizontalScrollBarEnabled = false
+        this.webView.setOnTouchListener { v, event ->
+          if (event.action == MotionEvent.ACTION_UP) {
+            this.jsAPI.broadcastScrollPosition()
+          }
+          false
+        }
+      }
+      SCROLLING_MODE_DISABLED -> {
+        this.webView.isVerticalScrollBarEnabled = false
+        this.webView.isHorizontalScrollBarEnabled = false
+
+        /*
+         * Disable manual scrolling on the web view. Scrolling is controlled via the javascript API.
+         */
+
+        this.webView.setOnTouchListener { v, event ->
+          event.action == MotionEvent.ACTION_MOVE
+        }
+      }
     }
   }
 
@@ -91,6 +114,46 @@ internal class SR2WebViewConnection(
       this.uiExecutor.invoke {
         this.webView.webViewClient = SR2WebViewClient(location, future, this.commandQueue)
         this.webView.loadUrl(location)
+      }
+      this.waitOrFail(id, future)
+    }
+    return future
+  }
+
+  override fun setScrolling(
+    mode: SR2ScrollingMode
+  ): ListenableFuture<*> {
+    val id = UUID.randomUUID()
+    val future = SettableFuture.create<Any>()
+
+    /*
+     * Execute a request to the web view on the UI thread, and wait for that request to
+     * complete on the background thread we're using for web view connections. Because
+     * the background thread executor is a single thread, this has the effect of serializing
+     * and queueing requests made to the web view. We can effectively wait on the [Future]
+     * that will be set by the web view on completion without having to block the UI thread
+     * waiting for the request to complete.
+     */
+
+    this.requestQueue.execute {
+      this.logger.debug("[{}] setScrolling {}", id, mode)
+      this.uiExecutor.invoke {
+        try {
+          this.setScrollingDirect(mode)
+          val jsFuture = this.jsAPI.setScrollMode(mode)
+          jsFuture.addListener(
+            {
+              try {
+                future.set(jsFuture.get())
+              } catch (e: Throwable) {
+                future.setException(e)
+              }
+            },
+            MoreExecutors.directExecutor()
+          )
+        } catch (e: java.lang.Exception) {
+          future.setException(e)
+        }
       }
       this.waitOrFail(id, future)
     }
