@@ -21,6 +21,7 @@ var readium = (function() {
     }, false);
 
     var pageWidth = 1;
+    var scrollPositionRecursing = false;
 
     /*
      * A function executed when the scroll position changes. This is used to calculate
@@ -38,9 +39,17 @@ var readium = (function() {
         return;
       }
 
+      if (scrollPositionRecursing) {
+        console.log("scrollPositionRecursing")
+        return;
+      }
+
+      scrollPositionRecursing = true
       var scrollX       = window.scrollX;
       var documentWidth = document.scrollingElement.scrollWidth;
       var progress      = scrollX / documentWidth;
+
+      scrollToPosition(progress);
 
       var pageCountRaw  = Math.round(documentWidth / pageWidth);
       var pageCount     = Math.max(1, pageCountRaw);
@@ -49,6 +58,7 @@ var readium = (function() {
       var pageIndex     = Math.max(1, pageIndex1);
 
       Android.onReadingPositionChanged(progress, pageIndex, pageCount);
+      scrollPositionRecursing = false
     }
 
     /*
@@ -114,7 +124,7 @@ var readium = (function() {
     // Position must be in the range [0 - 1], 0-100%.
     function scrollToPosition(position) {
         if ((position < 0) || (position > 1)) {
-            throw "scrollToPosition() must be given a position from 0.0 to  1.0";
+            throw "scrollToPosition() must be given a position from 0.0 to 1.0";
         }
 
         if (isScrollModeEnabled()) {
@@ -124,7 +134,8 @@ var readium = (function() {
             var documentWidth = document.scrollingElement.scrollWidth;
             var factor = isRTL() ? -1 : 1;
             var offset = documentWidth * position * factor;
-            document.scrollingElement.scrollLeft = snapOffset(offset);
+            var offsetSnapped = snapOffset(offset);
+            document.scrollingElement.scrollLeft = offsetSnapped;
         }
     }
 
@@ -177,10 +188,9 @@ var readium = (function() {
         return (diff > 0.01);
     }
 
-    // Snap the offset to the screen width (page width).
+    // Snap the offset to the nearest multiple of the page width.
     function snapOffset(offset) {
-        var value = offset + (isRTL() ? -1 : 1);
-        return value - (value % pageWidth);
+        return pageWidth * Math.round(offset / pageWidth)
     }
 
     // Snaps the current offset to the page width.

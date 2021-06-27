@@ -213,10 +213,14 @@ internal class SR2Controller private constructor(
   }
 
   private fun serverLocationOfChapter(
-    chapter: SR2BookChapter
+    chapter: SR2BookChapter,
+    locator: SR2Locator
   ): String {
     val href = chapter.chapterHref.replace("^/+".toRegex(), "")
-    return String.format("%s/%s", this.baseUrl, href)
+    return when (val fragment = locator.chapterHrefFragment()) {
+      null -> String.format("%s/%s", this.baseUrl, href)
+      else -> String.format("%s/%s#%s", this.baseUrl, href, fragment)
+    }
   }
 
   private fun setCurrentChapter(locator: SR2Locator) {
@@ -531,7 +535,7 @@ internal class SR2Controller private constructor(
         this.bookMetadata.findChapter(locator)
           ?: throw IllegalStateException("Unable to locate a chapter for locator $locator")
       val targetLocation =
-        this.serverLocationOfChapter(targetChapter)
+        this.serverLocationOfChapter(targetChapter, locator)
 
       this.logger.debug("openChapterForLocator: {}", targetLocation)
       this.setCurrentChapter(locator)

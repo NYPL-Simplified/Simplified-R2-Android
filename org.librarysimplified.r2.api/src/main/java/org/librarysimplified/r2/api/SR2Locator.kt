@@ -8,6 +8,17 @@ sealed class SR2Locator : Comparable<SR2Locator> {
 
   abstract val chapterHref: String
 
+  /**
+   * @return The fragment associated with the chapter href, if any
+   */
+
+  fun chapterHrefFragment(): String? {
+    return when (val fragment = this.chapterHref.substringAfter('#', "")) {
+      "" -> null
+      else -> fragment
+    }
+  }
+
   data class SR2LocatorPercent(
     override val chapterHref: String,
     val chapterProgress: Double

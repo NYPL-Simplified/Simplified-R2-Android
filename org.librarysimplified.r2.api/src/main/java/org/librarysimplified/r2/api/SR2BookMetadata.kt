@@ -41,8 +41,9 @@ data class SR2BookMetadata(
   fun findChapter(
     href: String
   ): SR2BookChapter? {
+    val withoutFragment = href.substringBefore('#', href)
     for (index in this.readingOrder.indices) {
-      if (this.readingOrder[index].chapterHref == href) {
+      if (this.readingOrder[index].chapterHref == withoutFragment) {
         return this.readingOrder[index]
       }
     }
