@@ -9,12 +9,14 @@ internal object SR2Books {
 
   fun makeMetadata(
     publication: Publication,
-    bookId: String
+    bookId: String,
+    positionCount: Int
   ): SR2BookMetadata {
     return SR2BookMetadata(
       id = bookId,
       title = publication.metadata.title,
-      readingOrder = this.makeReadingOrder(publication)
+      readingOrder = this.makeReadingOrder(publication),
+      positionCount = positionCount
     )
   }
 

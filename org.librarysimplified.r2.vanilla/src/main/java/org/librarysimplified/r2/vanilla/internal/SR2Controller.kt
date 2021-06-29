@@ -33,8 +33,10 @@ import org.librarysimplified.r2.api.SR2Locator
 import org.librarysimplified.r2.api.SR2Locator.SR2LocatorChapterEnd
 import org.librarysimplified.r2.api.SR2Locator.SR2LocatorPercent
 import org.librarysimplified.r2.api.SR2Theme
+import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.publication.services.isRestricted
+import org.readium.r2.shared.publication.services.positionsByReadingOrder
 import org.readium.r2.shared.publication.services.protectionError
 import org.readium.r2.shared.util.getOrElse
 import org.readium.r2.streamer.server.Server
@@ -46,6 +48,7 @@ import java.util.concurrent.ExecutionException
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.annotation.concurrent.GuardedBy
+import kotlin.math.ceil
 
 /**
  * The default R2 controller implementation.
@@ -58,6 +61,7 @@ internal class SR2Controller private constructor(
   private val publication: Publication,
   private val epubFileName: String,
   private val baseUrl: URI,
+  private val positionsByReadingOrder: List<List<Locator>>
 ) : SR2ControllerType {
 
   companion object {
@@ -115,6 +119,10 @@ internal class SR2Controller private constructor(
         throw IOException("Publication has no chapters!")
       }
 
+      val positionsByReadingOrder = runBlocking {
+        publication.positionsByReadingOrder()
+      }
+
       this.logger.debug("publication title: {}", publication.metadata.title)
       val port = this.fetchUnusedHTTPPort()
       this.logger.debug("server port: {}", port)
@@ -143,7 +151,8 @@ internal class SR2Controller private constructor(
           baseUrl = baseUrl.toURI(),
           port = port,
           publication = publication,
-          server = server
+          server = server,
+          positionsByReadingOrder = positionsByReadingOrder
         )
       } catch (e: Exception) {
         try {
@@ -189,7 +198,8 @@ internal class SR2Controller private constructor(
   override val bookMetadata: SR2BookMetadata =
     SR2Books.makeMetadata(
       publication = this.publication,
-      bookId = this.configuration.bookId
+      bookId = this.configuration.bookId,
+      positionCount = this.positionsByReadingOrder.fold(0) { current, list -> current + list.size }
     )
 
   @Volatile
@@ -650,13 +660,16 @@ internal class SR2Controller private constructor(
         }
       }
 
+      val chapterPositions = this@SR2Controller.positionsByReadingOrder[currentChapter.chapterIndex]
+      val positionIndex = ceil(chapterProgress * (chapterPositions.size - 1)).toInt()
+      val currentPosition = chapterPositions[positionIndex].locations.position!!
+
       this@SR2Controller.eventSubject.onNext(
         SR2ReadingPositionChanged(
           chapterHref = currentChapter.chapterHref,
           chapterTitle = chapterTitle,
           chapterProgress = chapterProgress,
-          currentPage = currentPage,
-          pageCount = pageCount,
+          currentPosition = currentPosition,
           bookProgress = this@SR2Controller.currentBookProgress
         )
       )
