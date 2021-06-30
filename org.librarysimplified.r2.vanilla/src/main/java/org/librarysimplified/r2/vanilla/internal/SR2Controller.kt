@@ -48,7 +48,7 @@ import java.util.concurrent.ExecutionException
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.annotation.concurrent.GuardedBy
-import kotlin.math.ceil
+import kotlin.math.round
 
 /**
  * The default R2 controller implementation.
@@ -660,9 +660,13 @@ internal class SR2Controller private constructor(
         }
       }
 
-      val chapterPositions = this@SR2Controller.positionsByReadingOrder[currentChapter.chapterIndex]
-      val positionIndex = ceil(chapterProgress * (chapterPositions.size - 1)).toInt()
-      val currentPosition = chapterPositions[positionIndex].locations.position!!
+      val chapterPositions =
+        this@SR2Controller.positionsByReadingOrder[currentChapter.chapterIndex]
+      val positionIndex =
+        round(chapterProgress * chapterPositions.size).toInt()
+          .coerceAtMost(chapterPositions.size - 1)
+      val currentPosition =
+        chapterPositions[positionIndex].locations.position!!
 
       this@SR2Controller.eventSubject.onNext(
         SR2ReadingPositionChanged(
