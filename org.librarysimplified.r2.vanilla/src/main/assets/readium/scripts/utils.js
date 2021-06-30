@@ -16,11 +16,61 @@ var readium = (function() {
             onViewportWidthChanged();
             snapCurrentOffset();
         });
-
         onViewportWidthChanged();
     }, false);
 
     var pageWidth = 1;
+
+    /*
+     * Return the number of pages in paginated mode, or 1 for scrolling mode.
+     */
+
+    function getCurrentPageCount() {
+        if (isScrollModeEnabled()) {
+            return 1;
+        }
+
+        var scrollX       = window.scrollX;
+        var documentWidth = document.scrollingElement.scrollWidth;
+        var pageCountRaw  = Math.round(documentWidth / pageWidth);
+        return Math.max(1, pageCountRaw);
+    }
+
+    /*
+     * Return the index of the current page (starting from 1) in paginated mode, or 1 for
+     * scrolling mode.
+     */
+
+    function getCurrentPageIndex() {
+        if (isScrollModeEnabled()) {
+            return 1;
+        }
+
+        var scrollX       = window.scrollX;
+        var pageIndexRaw  = Math.round(scrollX / pageWidth);
+        var pageIndex1    = pageIndexRaw + 1;
+        return Math.max(1, pageIndex1);
+    }
+
+    /*
+     * Return `true` if the user is currently on the last page of the chapter. Always true
+     * for scrolling mode.
+     */
+
+    function isOnLastPage() {
+        var pageCount = getCurrentPageCount();
+        var pageIndex = getCurrentPageIndex();
+        return pageIndex == pageCount;
+    }
+
+    /*
+     * Return `true` if the user is currently on the first page of the chapter. Always true
+     * for scrolling mode.
+     */
+
+    function isOnFirstPage() {
+        return getCurrentPageIndex() == 1;
+    }
 
     /*
      * A function executed when the scroll position changes. This is used to calculate
@@ -41,12 +91,8 @@ var readium = (function() {
       var scrollX       = window.scrollX;
       var documentWidth = document.scrollingElement.scrollWidth;
       var progress      = scrollX / documentWidth;
-
-      var pageCountRaw  = Math.round(documentWidth / pageWidth);
-      var pageCount     = Math.max(1, pageCountRaw);
-      var pageIndexRaw  = Math.round(scrollX / pageWidth);
-      var pageIndex1    = pageIndexRaw + 1;
-      var pageIndex     = Math.max(1, pageIndex1);
+      var pageCount     = getCurrentPageCount();
+      var pageIndex     = getCurrentPageIndex();
 
       Android.onReadingPositionChanged(progress, pageIndex, pageCount);
     }
@@ -149,6 +195,13 @@ var readium = (function() {
 
     // Returns false if the page is already at the left-most scroll offset.
     function scrollLeft() {
+        if (isRTL() && isOnLastPage()) {
+          return false;
+        }
+        if (isOnFirstPage()) {
+          return false;
+        }
+
         var documentWidth = document.scrollingElement.scrollWidth;
         var offset = window.scrollX - pageWidth;
         var minOffset = isRTL() ? -(documentWidth - pageWidth) : 0;
@@ -157,6 +210,13 @@ var readium = (function() {
 
     // Returns false if the page is already at the right-most scroll offset.
     function scrollRight() {
+        if (isRTL() && isOnFirstPage()) {
+          return false;
+        }
+        if (isOnLastPage()) {
+          return false
+        }
+
         var documentWidth = document.scrollingElement.scrollWidth;
         var offset = window.scrollX + pageWidth;
         var maxOffset = isRTL() ? 0 : (documentWidth - pageWidth);

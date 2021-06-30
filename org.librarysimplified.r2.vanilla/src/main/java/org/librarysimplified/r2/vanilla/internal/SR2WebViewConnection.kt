@@ -53,6 +53,16 @@ internal class SR2WebViewConnection(
       webView.webChromeClient = webChromeClient
       webView.settings.javaScriptEnabled = true
 
+      /*
+       * Allow the web view to obey <meta> viewport elements in the <head> section of
+       * documents. This is required for rendering fixed-layout EPUB files.
+       *
+       * @see "https://www.w3.org/publishing/epub/epub-contentdocs.html#sec-fixed-layouts"
+       */
+
+      webView.settings.loadWithOverviewMode = true
+      webView.settings.useWideViewPort = true
+
       when (scrollingMode) {
         SCROLLING_MODE_PAGINATED -> {
           /*
