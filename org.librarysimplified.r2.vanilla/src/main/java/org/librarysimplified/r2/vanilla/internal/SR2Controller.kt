@@ -33,10 +33,10 @@ import org.librarysimplified.r2.api.SR2Locator
 import org.librarysimplified.r2.api.SR2Locator.SR2LocatorChapterEnd
 import org.librarysimplified.r2.api.SR2Locator.SR2LocatorPercent
 import org.librarysimplified.r2.api.SR2Theme
+import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication
-import org.readium.r2.shared.publication.epub.EpubLayout
-import org.readium.r2.shared.publication.presentation.presentation
 import org.readium.r2.shared.publication.services.isRestricted
+import org.readium.r2.shared.publication.services.positionsByReadingOrder
 import org.readium.r2.shared.publication.services.protectionError
 import org.readium.r2.shared.util.getOrElse
 import org.readium.r2.streamer.server.Server
@@ -48,6 +48,7 @@ import java.util.concurrent.ExecutionException
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.annotation.concurrent.GuardedBy
+import kotlin.math.round
 
 /**
  * The default R2 controller implementation.
@@ -60,6 +61,7 @@ internal class SR2Controller private constructor(
   private val publication: Publication,
   private val epubFileName: String,
   private val baseUrl: URI,
+  private val positionsByReadingOrder: List<List<Locator>>
 ) : SR2ControllerType {
 
   companion object {
@@ -117,6 +119,10 @@ internal class SR2Controller private constructor(
         throw IOException("Publication has no chapters!")
       }
 
+      val positionsByReadingOrder = runBlocking {
+        publication.positionsByReadingOrder()
+      }
+
       this.logger.debug("publication title: {}", publication.metadata.title)
       val port = this.fetchUnusedHTTPPort()
       this.logger.debug("server port: {}", port)
@@ -145,7 +151,8 @@ internal class SR2Controller private constructor(
           baseUrl = baseUrl.toURI(),
           port = port,
           publication = publication,
-          server = server
+          server = server,
+          positionsByReadingOrder = positionsByReadingOrder
         )
       } catch (e: Exception) {
         try {
@@ -191,7 +198,8 @@ internal class SR2Controller private constructor(
   override val bookMetadata: SR2BookMetadata =
     SR2Books.makeMetadata(
       publication = this.publication,
-      bookId = this.configuration.bookId
+      bookId = this.configuration.bookId,
+      positionCount = this.positionsByReadingOrder.fold(0) { current, list -> current + list.size }
     )
 
   @Volatile
@@ -652,41 +660,23 @@ internal class SR2Controller private constructor(
         }
       }
 
-      return when (this@SR2Controller.publication.metadata.presentation.layout) {
-        EpubLayout.FIXED -> {
+      val chapterPositions =
+        this@SR2Controller.positionsByReadingOrder[currentChapter.chapterIndex]
+      val positionIndex =
+        round(chapterProgress * chapterPositions.size).toInt()
+          .coerceAtMost(chapterPositions.size - 1)
+      val currentPosition =
+        chapterPositions[positionIndex].locations.position!!
 
-          /*
-           * For fixed-layout EPUB files, we'll have one page per chapter, and the chapters
-           * themselves are supposed to represent "pages". Therefore, we publish page number
-           * indicators that are actually the chapter indices and counts instead.
-           */
-
-          this@SR2Controller.eventSubject.onNext(
-            SR2ReadingPositionChanged(
-              chapterHref = currentChapter.chapterHref,
-              chapterTitle = chapterTitle,
-              chapterProgress = chapterProgress,
-              currentPage = Math.max(1, currentChapter.chapterIndex + 1),
-              pageCount = this@SR2Controller.bookMetadata.readingOrder.size,
-              bookProgress = this@SR2Controller.currentBookProgress
-            )
-          )
-        }
-
-        EpubLayout.REFLOWABLE,
-        null -> {
-          this@SR2Controller.eventSubject.onNext(
-            SR2ReadingPositionChanged(
-              chapterHref = currentChapter.chapterHref,
-              chapterTitle = chapterTitle,
-              chapterProgress = chapterProgress,
-              currentPage = currentPage,
-              pageCount = pageCount,
-              bookProgress = this@SR2Controller.currentBookProgress
-            )
-          )
-        }
-      }
+      this@SR2Controller.eventSubject.onNext(
+        SR2ReadingPositionChanged(
+          chapterHref = currentChapter.chapterHref,
+          chapterTitle = chapterTitle,
+          chapterProgress = chapterProgress,
+          currentPosition = currentPosition,
+          bookProgress = this@SR2Controller.currentBookProgress
+        )
+      )
     }
 
     @android.webkit.JavascriptInterface

@@ -51,8 +51,7 @@ sealed class SR2Event {
     val chapterHref: String,
     val chapterTitle: String?,
     val chapterProgress: Double,
-    val currentPage: Int,
-    val pageCount: Int,
+    val currentPosition: Int,
     val bookProgress: Double
   ) : SR2Event() {
 

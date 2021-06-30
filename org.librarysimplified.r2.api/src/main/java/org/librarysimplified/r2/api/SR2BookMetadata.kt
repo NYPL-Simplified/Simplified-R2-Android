@@ -22,7 +22,13 @@ data class SR2BookMetadata(
    * The chapters of the book in reading order.
    */
 
-  val readingOrder: List<SR2BookChapter>
+  val readingOrder: List<SR2BookChapter>,
+
+  /**
+   * The number of positions in the book
+   */
+
+  val positionCount: Int
 ) {
 
   init {

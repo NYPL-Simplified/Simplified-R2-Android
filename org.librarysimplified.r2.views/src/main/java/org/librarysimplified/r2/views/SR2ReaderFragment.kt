@@ -234,7 +234,8 @@ class SR2ReaderFragment private constructor(
     val context = this.context ?: return
     this.logger.debug("chapterTitle=${event.chapterTitle}")
     this.progressView.apply { this.max = 100; this.progress = event.bookProgressPercent }
-    this.positionPageView.text = context.getString(R.string.progress_page, event.currentPage, event.pageCount)
+    val positionCount = this.controller!!.bookMetadata.positionCount
+    this.positionPageView.text = context.getString(R.string.progress_page, event.currentPosition, positionCount)
     this.positionTitleView.text = event.chapterTitle
     this.positionPercentView.text = this.getString(R.string.progress_percent, event.bookProgressPercent)
     this.reconfigureBookmarkMenuItem(event.locator)
