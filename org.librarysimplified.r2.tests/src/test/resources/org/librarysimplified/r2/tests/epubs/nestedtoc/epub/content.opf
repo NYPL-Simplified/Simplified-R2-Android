@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<package xmlns="http://www.idpf.org/2007/opf" dir="ltr" prefix="se: http://standardebooks.org/vocab/1.0" unique-identifier="uid" version="3.0" xml:lang="en-US">
+	<metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+		<dc:identifier id="uid">urn:uuid:ef63aa42-74ef-4433-9fc8-c55c3bfed66d</dc:identifier>
+		<dc:date>2019-12-23T22:06:14Z</dc:date>
+		<dc:language>en</dc:language>
+		<dc:title>Spaces</dc:title>
+		<meta property="dcterms:modified">2019-12-23T22:06:14Z</meta>
+	</metadata>
+	<manifest>
+		<item href="toc.ncx" id="ncx" media-type="application/x-dtbncx+xml"/>
+		<item href="toc.xhtml" id="toc.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+		<item href="text/p0.xhtml" id="p0.xhtml" media-type="application/xhtml+xml"/>
+		<item href="text/p1.xhtml" id="p1.xhtml" media-type="application/xhtml+xml"/>
+		<item href="text/p2.xhtml" id="p2.xhtml" media-type="application/xhtml+xml"/>
+	</manifest>
+	<spine toc="ncx">
+		<itemref idref="p0.xhtml"/>
+        <itemref idref="p1.xhtml" linear="no"/>
+        <itemref idref="p2.xhtml" linear="no"/>
+	</spine>
+</package>

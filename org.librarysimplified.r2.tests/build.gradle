@@ -1,0 +1,19 @@
+dependencies {
+  implementation libraries.junit_jupiter_api
+  implementation libraries.junit_jupiter_engine
+  implementation libraries.kotlin_stdlib
+  implementation libraries.kxml
+  implementation libraries.mockito_android
+
+  //noinspection DuplicatePlatformClasses
+  implementation libraries.org_json
+
+  implementation libraries.r2_shared
+  implementation libraries.r2_streamer
+  implementation libraries.slf4j
+  implementation libraries.xmlpull
+  implementation libraries.logback_classic
+
+  api project(":org.librarysimplified.r2.api")
+  api project(":org.librarysimplified.r2.vanilla")
+}

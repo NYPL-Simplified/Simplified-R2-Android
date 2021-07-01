@@ -67,7 +67,7 @@ class DemoDatabase(private val context: Context) {
         date = DateTime.now(),
         type = LAST_READ,
         title = "",
-        locator = SR2LocatorPercent(bookMetadata.readingOrder[0].chapterHref, 0.0),
+        locator = SR2LocatorPercent(bookMetadata.navigationGraph.start().navigationPoint.locator.chapterHref, 0.0),
         bookProgress = 0.0
       )
   }

@@ -23,33 +23,20 @@
     app:layout_constraintTop_toTopOf="parent" />
 
   <TextView
-    android:id="@+id/chapterIndex"
-    android:layout_width="48dp"
-    android:layout_height="0dp"
-    android:ellipsize="end"
-    android:gravity="start|top"
-    android:maxLines="1"
-    android:maxLength="5"
-    android:layout_marginStart="16dp"
-    android:layout_marginTop="24dp"
-    app:layout_constraintStart_toEndOf="@id/chapterIcon"
-    app:layout_constraintTop_toTopOf="parent"
-    tools:text="999." />
-
-  <TextView
     android:id="@+id/chapterTitle"
     android:layout_width="0dp"
     android:layout_height="0dp"
+    android:layout_marginTop="24dp"
+    android:layout_marginEnd="16dp"
+    android:layout_marginBottom="16dp"
+    android:layout_marginStart="16dp"
     android:ellipsize="end"
     android:gravity="start|top"
     android:maxLines="2"
     android:text="@string/placeholder"
-    android:layout_marginTop="24dp"
-    android:layout_marginEnd="16dp"
-    android:layout_marginBottom="16dp"
+    app:layout_constraintStart_toEndOf="@id/chapterIcon"
     app:layout_constraintBottom_toBottomOf="parent"
     app:layout_constraintEnd_toEndOf="parent"
-    app:layout_constraintStart_toEndOf="@id/chapterIndex"
     app:layout_constraintTop_toTopOf="parent" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

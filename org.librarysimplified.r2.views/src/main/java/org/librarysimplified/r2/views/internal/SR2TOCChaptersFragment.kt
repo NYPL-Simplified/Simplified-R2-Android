@@ -9,10 +9,10 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.SimpleItemAnimator
-import org.librarysimplified.r2.api.SR2BookChapter
 import org.librarysimplified.r2.api.SR2Command
 import org.librarysimplified.r2.api.SR2ControllerType
 import org.librarysimplified.r2.api.SR2Locator.SR2LocatorPercent
+import org.librarysimplified.r2.api.SR2TOCEntry
 import org.librarysimplified.r2.ui_thread.SR2UIThread
 import org.librarysimplified.r2.views.R
 import org.librarysimplified.r2.views.SR2ReaderParameters
@@ -40,7 +40,7 @@ internal class SR2TOCChaptersFragment private constructor(
     this.chapterAdapter =
       SR2TOCChapterAdapter(
         resources = this.resources,
-        onChapterSelected = { this.onChapterSelected(it) }
+        onTOCEntrySelected = { this.onTOCEntrySelected(it) }
       )
   }
 
@@ -72,14 +72,16 @@ internal class SR2TOCChaptersFragment private constructor(
         .get(SR2ReaderViewModel::class.java)
 
     this.controller = this.readerModel.get()!!
-    this.chapterAdapter.setChapters(controller.bookMetadata.readingOrder)
+    this.chapterAdapter.setTableOfContentsEntries(
+      this.controller.bookMetadata.navigationGraph.tableOfContentsFlat
+    )
   }
 
-  private fun onChapterSelected(chapter: SR2BookChapter) {
+  private fun onTOCEntrySelected(entry: SR2TOCEntry) {
     this.controller.submitCommand(
       SR2Command.OpenChapter(
         SR2LocatorPercent(
-          chapterHref = chapter.chapterHref,
+          chapterHref = entry.node.navigationPoint.locator.chapterHref,
           chapterProgress = 0.0
         )
       )

@@ -8,25 +8,23 @@ import android.widget.ImageView
 import android.widget.TextView
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
-import org.librarysimplified.r2.api.SR2BookChapter
+import org.librarysimplified.r2.api.SR2TOCEntry
 import org.librarysimplified.r2.views.R
-import org.librarysimplified.r2.views.internal.SR2DiffUtils.chapterDiffCallback
+import org.librarysimplified.r2.views.internal.SR2DiffUtils.tocEntryCallback
 import org.librarysimplified.r2.views.internal.SR2TOCChapterAdapter.SR2TOCChapterViewHolder
 
 internal class SR2TOCChapterAdapter(
   private val resources: Resources,
-  private val onChapterSelected: (SR2BookChapter) -> Unit
-) : ListAdapter<SR2BookChapter, SR2TOCChapterViewHolder>(chapterDiffCallback) {
+  private val onTOCEntrySelected: (SR2TOCEntry) -> Unit
+) : ListAdapter<SR2TOCEntry, SR2TOCChapterViewHolder>(tocEntryCallback) {
 
   class SR2TOCChapterViewHolder(
     val rootView: View
   ) : RecyclerView.ViewHolder(rootView) {
     val chapterIcon: ImageView =
-      rootView.findViewById(R.id.chapterIcon)
-    val chapterIndexText: TextView =
-      rootView.findViewById(R.id.chapterIndex)
+      this.rootView.findViewById(R.id.chapterIcon)
     val chapterTitleText: TextView =
-      rootView.findViewById(R.id.chapterTitle)
+      this.rootView.findViewById(R.id.chapterTitle)
   }
 
   override fun onCreateViewHolder(
@@ -47,16 +45,24 @@ internal class SR2TOCChapterAdapter(
     val chapter = this.getItem(position)
     holder.rootView.setOnClickListener {
       holder.rootView.setOnClickListener(null)
-      this.onChapterSelected.invoke(chapter)
+      this.onTOCEntrySelected.invoke(chapter)
     }
-    val chapterFrom1 = chapter.chapterIndex + 1
-    holder.chapterIndexText.text = "$chapterFrom1."
-    holder.chapterIndexText.contentDescription =
-      this.resources.getString(R.string.tocAccessChapter, chapterFrom1, chapter.title)
-    holder.chapterTitleText.text = chapter.title
+
+    /*
+     * Dynamically apply multiples of 16dp to the left margin to simulate "nesting".
+     */
+
+    val layoutParams = holder.chapterTitleText.layoutParams as ViewGroup.MarginLayoutParams
+    layoutParams.marginStart = (chapter.depth + 1) * this.dpToPixels(24.0f)
+    holder.chapterTitleText.layoutParams = layoutParams
+    holder.chapterTitleText.text = chapter.node.title
   }
 
-  fun setChapters(chaptersNow: List<SR2BookChapter>) {
-    this.submitList(chaptersNow)
+  private fun dpToPixels(dp: Float): Int {
+    return Math.round(dp * (this.resources.displayMetrics.densityDpi / 160f))
+  }
+
+  fun setTableOfContentsEntries(entriesNow: List<SR2TOCEntry>) {
+    this.submitList(entriesNow)
   }
 }
