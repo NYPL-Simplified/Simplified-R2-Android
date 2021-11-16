@@ -9,6 +9,7 @@ import org.librarysimplified.r2.api.SR2ControllerCommandQueueType
 import org.librarysimplified.r2.api.SR2ScrollingMode
 import org.librarysimplified.r2.api.SR2ScrollingMode.SCROLLING_MODE_CONTINUOUS
 import org.librarysimplified.r2.api.SR2ScrollingMode.SCROLLING_MODE_PAGINATED
+import org.librarysimplified.r2.ui_thread.SR2UIExecutorType
 import org.readium.r2.shared.publication.epub.EpubLayout
 import org.slf4j.LoggerFactory
 import java.util.UUID
@@ -26,7 +27,7 @@ internal class SR2WebViewConnection(
   private val jsAPI: SR2JavascriptAPI,
   private val webView: WebView,
   private val requestQueue: ExecutorService,
-  private val uiExecutor: (f: () -> Unit) -> Unit,
+  private val uiExecutor: SR2UIExecutorType,
   private val commandQueue: SR2ControllerCommandQueueType
 ) : SR2WebViewConnectionType {
 
@@ -38,7 +39,7 @@ internal class SR2WebViewConnection(
     fun create(
       webView: WebView,
       jsReceiver: SR2JavascriptAPIReceiverType,
-      uiExecutor: (f: () -> Unit) -> Unit,
+      uiExecutorFactory: () -> SR2UIExecutorType,
       commandQueue: SR2ControllerCommandQueueType,
       scrollingMode: SR2ScrollingMode,
       layout: EpubLayout
@@ -98,7 +99,7 @@ internal class SR2WebViewConnection(
         jsAPI = SR2JavascriptAPI(webView, commandQueue),
         webView = webView,
         requestQueue = requestQueue,
-        uiExecutor = uiExecutor,
+        uiExecutor = uiExecutorFactory(),
         commandQueue = commandQueue
       )
     }
@@ -121,7 +122,7 @@ internal class SR2WebViewConnection(
 
     this.requestQueue.execute {
       this.logger.debug("[{}]: openURL {}", id, location)
-      this.uiExecutor.invoke {
+      this.uiExecutor.execute {
         this.webView.webViewClient = SR2WebViewClient(location, future, this.commandQueue)
         this.webView.loadUrl(location)
       }
@@ -170,7 +171,7 @@ internal class SR2WebViewConnection(
     this.requestQueue.execute {
       this.logger.debug("[{}] executeJS", id)
 
-      this.uiExecutor.invoke {
+      this.uiExecutor.execute {
         val jsFuture = function.invoke(this.jsAPI)
         jsFuture.addListener(
           {
@@ -190,6 +191,7 @@ internal class SR2WebViewConnection(
   }
 
   override fun close() {
-    this.requestQueue.shutdown()
+    this.requestQueue.shutdownNow()
+    this.uiExecutor.dispose()
   }
 }

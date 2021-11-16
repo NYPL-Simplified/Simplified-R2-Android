@@ -14,7 +14,7 @@ import org.librarysimplified.r2.api.SR2PublisherCSS.SR2_PUBLISHER_DEFAULT_CSS_EN
 import org.librarysimplified.r2.api.SR2ScrollingMode
 import org.librarysimplified.r2.api.SR2ScrollingMode.SCROLLING_MODE_CONTINUOUS
 import org.librarysimplified.r2.api.SR2ScrollingMode.SCROLLING_MODE_PAGINATED
-import org.librarysimplified.r2.ui_thread.SR2UIThread
+import org.librarysimplified.r2.ui_thread.SR2UIThreadService
 import org.librarysimplified.r2.vanilla.internal.SR2ReadiumInternalTheme.DARK
 import org.librarysimplified.r2.vanilla.internal.SR2ReadiumInternalTheme.DAY
 import org.librarysimplified.r2.vanilla.internal.SR2ReadiumInternalTheme.LIGHT
@@ -38,7 +38,7 @@ internal class SR2JavascriptAPI(
   private fun executeJavascript(
     script: String
   ): ListenableFuture<String> {
-    SR2UIThread.checkIsUIThread()
+    SR2UIThreadService.checkIsUIThread()
 
     val future = SettableFuture.create<String>()
     this.logger.debug("evaluating {}", script)

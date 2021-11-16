@@ -31,7 +31,7 @@ class SR2TOCFragment private constructor(
     inflater: LayoutInflater,
     container: ViewGroup?,
     savedInstanceState: Bundle?
-  ): View? {
+  ): View {
     val view =
       inflater.inflate(R.layout.sr2_table_of_contents, container, false)
 

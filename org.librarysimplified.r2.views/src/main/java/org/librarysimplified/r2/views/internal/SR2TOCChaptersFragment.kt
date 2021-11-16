@@ -7,17 +7,15 @@ import android.view.ViewGroup
 import androidx.core.view.isGone
 import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
-import androidx.lifecycle.ViewModelProvider
+import androidx.fragment.app.activityViewModels
+import androidx.fragment.app.viewModels
 import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.SimpleItemAnimator
-import org.librarysimplified.r2.api.SR2Command
-import org.librarysimplified.r2.api.SR2ControllerType
-import org.librarysimplified.r2.api.SR2Locator.SR2LocatorPercent
+import io.reactivex.disposables.Disposable
 import org.librarysimplified.r2.api.SR2TOCEntry
-import org.librarysimplified.r2.ui_thread.SR2UIThread
+import org.librarysimplified.r2.ui_thread.SR2UIThreadService
 import org.librarysimplified.r2.views.R
 import org.librarysimplified.r2.views.SR2ReaderParameters
-import org.librarysimplified.r2.views.SR2ReaderViewEvent.SR2ReaderViewNavigationEvent.SR2ReaderViewNavigationClose
 import org.librarysimplified.r2.views.SR2ReaderViewModel
 import org.librarysimplified.r2.views.SR2ReaderViewModelFactory
 
@@ -31,9 +29,19 @@ internal class SR2TOCChaptersFragment private constructor(
     }
   }
 
-  private lateinit var controller: SR2ControllerType
-  private lateinit var readerModel: SR2ReaderViewModel
+  private val viewModel: SR2TOCChaptersFragmentViewModel by viewModels(
+    factoryProducer = {
+      val actFactory = { SR2ReaderViewModelFactory(requireActivity().application, this.parameters) }
+      val actModel: SR2ReaderViewModel by activityViewModels(factoryProducer = actFactory)
+      SR2FragmentViewModelFactory(actModel)
+    }
+  )
+
   private lateinit var chapterAdapter: SR2TOCChapterAdapter
+  private lateinit var tocChaptersList: RecyclerView
+  private lateinit var tocChaptersErrors: View
+
+  private var bookEvents: Disposable? = null
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
@@ -49,50 +57,54 @@ internal class SR2TOCChaptersFragment private constructor(
     inflater: LayoutInflater,
     container: ViewGroup?,
     savedInstanceState: Bundle?
-  ): View? {
-    val layout =
-      inflater.inflate(R.layout.sr2_toc_chapters, container, false)
-    val recyclerView =
-      layout.findViewById<RecyclerView>(R.id.tocChaptersList)
-
-    recyclerView.adapter = this.chapterAdapter
-    recyclerView.setHasFixedSize(true)
-    recyclerView.setItemViewCacheSize(32)
-    (recyclerView.itemAnimator as SimpleItemAnimator).supportsChangeAnimations = false
-    return layout
+  ): View {
+    return inflater.inflate(R.layout.sr2_toc_chapters, container, false)
   }
 
-  override fun onStart() {
-    super.onStart()
+  override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+    super.onViewCreated(view, savedInstanceState)
 
-    val activity = this.requireActivity()
+    this.tocChaptersList =
+      view.findViewById(R.id.tocChaptersList)
+    this.tocChaptersErrors =
+      view.findViewById(R.id.tocChaptersError)
 
-    this.readerModel =
-      ViewModelProvider(activity, SR2ReaderViewModelFactory(this.parameters))
-        .get(SR2ReaderViewModel::class.java)
+    this.tocChaptersList.adapter = this.chapterAdapter
+    this.tocChaptersList.setHasFixedSize(true)
+    this.tocChaptersList.setItemViewCacheSize(32)
+    (this.tocChaptersList.itemAnimator as SimpleItemAnimator).supportsChangeAnimations = false
 
-    this.controller = this.readerModel.get()!!
-    val toc = this.controller.bookMetadata.tableOfContents
-    view?.apply {
-      findViewById<View>(R.id.tocChaptersError)?.isVisible = toc.isEmpty()
-      findViewById<RecyclerView>(R.id.tocChaptersList)?.isGone = toc.isEmpty()
+    this.bookEvents = this.viewModel.bookEvents.subscribe(this::onViewModelEvent)
+  }
+
+  private fun onViewModelEvent(event: SR2ViewModelBookEvent) {
+    return when (event) {
+      is SR2ViewModelBookEvent.SR2ViewModelBookOpenFailed -> {
+        // Nothing
+      }
+      is SR2ViewModelBookEvent.SR2ViewModelBookOpened -> {
+        val controller = event.controller
+        this.reloadToc(controller.bookMetadata.tableOfContents)
+      }
     }
+  }
+
+  private fun reloadToc(toc: List<SR2TOCEntry>) {
+    this.tocChaptersErrors.isVisible = toc.isEmpty()
+    this.tocChaptersList.isGone = toc.isEmpty()
     this.chapterAdapter.setTableOfContentsEntries(toc)
   }
 
   private fun onTOCEntrySelected(entry: SR2TOCEntry) {
-    this.controller.submitCommand(
-      SR2Command.OpenChapter(
-        SR2LocatorPercent(
-          chapterHref = entry.href,
-          chapterProgress = 0.0
-        )
-      )
-    )
-
-    SR2UIThread.runOnUIThreadDelayed(
-      { this.readerModel.publishViewEvent(SR2ReaderViewNavigationClose) },
+    this.viewModel.openTocEntry(entry)
+    SR2UIThreadService.runOnUIThreadUnsafeDelayed(
+      this.viewModel::closeToc,
       SR2TOC.tocSelectionDelay()
     )
+  }
+
+  override fun onDestroyView() {
+    super.onDestroyView()
+    this.bookEvents?.dispose()
   }
 }

@@ -14,7 +14,7 @@ interface SR2UIThreadServiceType {
    */
 
   fun checkIsUIThread() {
-    check(isUIThread() != false) {
+    check(isUIThread()) {
       String.format(
         "Current thread '%s' is not the Android UI thread",
         Thread.currentThread()
@@ -36,24 +36,11 @@ interface SR2UIThreadServiceType {
    * @param r The runnable
    */
 
-  fun runOnUIThread(r: Runnable) {
+  fun runOnUIThreadUnsafe(r: Runnable) {
     val looper = Looper.getMainLooper()
     val h = Handler(looper)
     h.post(r)
   }
-
-  /**
-   * Run the given function on the UI thread.
-   *
-   * @param f The function
-   */
-
-  fun runOnUIThread(f: () -> Unit) =
-    this.runOnUIThread(
-      Runnable {
-        f.invoke()
-      }
-    )
 
   /**
    * Run the given Runnable on the UI thread after the specified delay.
@@ -62,12 +49,20 @@ interface SR2UIThreadServiceType {
    * @param ms The delay in milliseconds
    */
 
-  fun runOnUIThreadDelayed(
+  fun runOnUIThreadUnsafeDelayed(
     r: Runnable,
     ms: Long
   ) {
     val looper = Looper.getMainLooper()
     val h = Handler(looper)
     h.postDelayed(r, ms)
+  }
+
+  /**
+   * Create a new UI executor.
+   */
+
+  fun createExecutor(): SR2UIExecutorType {
+    return SR2UIExecutor()
   }
 }

@@ -6,21 +6,18 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.MenuItem
 import android.view.View
-import android.view.View.GONE
-import android.view.View.VISIBLE
 import android.view.ViewGroup
 import android.webkit.WebView
 import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.appcompat.widget.Toolbar
 import androidx.fragment.app.Fragment
-import androidx.lifecycle.ViewModelProvider
-import com.google.common.base.Preconditions
+import androidx.fragment.app.activityViewModels
+import androidx.fragment.app.viewModels
 import io.reactivex.disposables.Disposable
 import org.librarysimplified.r2.api.SR2Bookmark
 import org.librarysimplified.r2.api.SR2Bookmark.Type.EXPLICIT
 import org.librarysimplified.r2.api.SR2Command
-import org.librarysimplified.r2.api.SR2ControllerConfiguration
 import org.librarysimplified.r2.api.SR2ControllerType
 import org.librarysimplified.r2.api.SR2Event
 import org.librarysimplified.r2.api.SR2Event.SR2BookmarkEvent.SR2BookmarkCreated
@@ -36,32 +33,42 @@ import org.librarysimplified.r2.api.SR2Event.SR2OnCenterTapped
 import org.librarysimplified.r2.api.SR2Event.SR2ReadingPositionChanged
 import org.librarysimplified.r2.api.SR2Event.SR2ThemeChanged
 import org.librarysimplified.r2.api.SR2Locator
+import org.librarysimplified.r2.api.SR2ReadingPosition
 import org.librarysimplified.r2.api.SR2ScrollingMode.SCROLLING_MODE_CONTINUOUS
 import org.librarysimplified.r2.api.SR2ScrollingMode.SCROLLING_MODE_PAGINATED
 import org.librarysimplified.r2.api.SR2Theme
-import org.librarysimplified.r2.ui_thread.SR2UIThread
-import org.librarysimplified.r2.views.SR2ReaderViewEvent.SR2ReaderViewBookEvent.SR2BookLoadingFailed
-import org.librarysimplified.r2.views.SR2ReaderViewEvent.SR2ReaderViewControllerEvent.SR2ControllerBecameAvailable
-import org.librarysimplified.r2.views.SR2ReaderViewEvent.SR2ReaderViewNavigationEvent.SR2ReaderViewNavigationOpenTOC
+import org.librarysimplified.r2.ui_thread.SR2UIThreadService
 import org.librarysimplified.r2.views.internal.SR2BrightnessService
+import org.librarysimplified.r2.views.internal.SR2FragmentViewModelFactory
+import org.librarysimplified.r2.views.internal.SR2ReaderFragmentViewModel
 import org.librarysimplified.r2.views.internal.SR2SettingsDialog
 import org.librarysimplified.r2.views.internal.SR2ViewModelBookEvent
-import org.librarysimplified.r2.views.internal.SR2ViewModelBookEvent.SR2ViewModelBookOpenFailed
-import org.librarysimplified.r2.views.internal.SR2ViewModelBookEvent.SR2ViewModelBookOpened
 import org.slf4j.LoggerFactory
 
 class SR2ReaderFragment private constructor(
   private val parameters: SR2ReaderParameters
 ) : Fragment() {
 
-  private val logger =
-    LoggerFactory.getLogger(SR2ReaderFragment::class.java)
-
   companion object {
     fun create(parameters: SR2ReaderParameters): SR2ReaderFragment {
       return SR2ReaderFragment(parameters)
     }
   }
+
+  private val logger =
+    LoggerFactory.getLogger(SR2ReaderFragment::class.java)
+
+  private val viewModel: SR2ReaderFragmentViewModel by viewModels(
+    factoryProducer = {
+      val actFactory = { SR2ReaderViewModelFactory(requireActivity().application, this.parameters) }
+      val actModel: SR2ReaderViewModel by activityViewModels(factoryProducer = actFactory)
+      SR2FragmentViewModelFactory(actModel)
+    }
+  )
+
+  private var bookEvents: Disposable? = null
+  private var controllerEvents: Disposable? = null
+  private var controller: SR2ControllerType? = null
 
   private lateinit var container: ViewGroup
   private lateinit var loadingView: ProgressBar
@@ -71,12 +78,8 @@ class SR2ReaderFragment private constructor(
   private lateinit var positionTitleView: TextView
   private lateinit var progressContainer: ViewGroup
   private lateinit var progressView: ProgressBar
-  private lateinit var readerModel: SR2ReaderViewModel
   private lateinit var toolbar: Toolbar
   private lateinit var webView: WebView
-  private var controller: SR2ControllerType? = null
-  private var controllerEvents: Disposable? = null
-  private var controllerLifecycleEvents: Disposable? = null
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
@@ -87,9 +90,12 @@ class SR2ReaderFragment private constructor(
     inflater: LayoutInflater,
     container: ViewGroup?,
     savedInstanceState: Bundle?
-  ): View? {
-    val view =
-      inflater.inflate(R.layout.sr2_reader, container, false)
+  ): View {
+    return inflater.inflate(R.layout.sr2_reader, container, false)
+  }
+
+  override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+    super.onViewCreated(view, savedInstanceState)
 
     this.container =
       view.findViewById(R.id.readerContainer)
@@ -132,17 +138,21 @@ class SR2ReaderFragment private constructor(
       }
     }
 
-    this.configureForTheme(this.controller?.themeNow() ?: this.parameters.theme)
-    this.viewsShowLoading()
-    return view
+    /*
+     * The last book event is received at each subscription, that is every time
+     * the View is created. The UI will be configured in the handler.
+     */
+    this.bookEvents = this.viewModel.bookEvents.subscribe(this::onBookEvents)
+
+    this.configureViewsLoading()
   }
 
   private fun onReaderMenuAddBookmarkSelected(): Boolean {
-    SR2UIThread.checkIsUIThread()
+    SR2UIThreadService.checkIsUIThread()
 
     val controllerNow = this.controller
     if (controllerNow != null) {
-      if (this.findBookmarkForCurrentPage(controllerNow, controllerNow.positionNow()) == null) {
+      if (this.findBookmarkForCurrentPage(controllerNow, controllerNow.positionNow().locator) == null) {
         controllerNow.submitCommand(SR2Command.BookmarkCreate)
       }
     }
@@ -150,21 +160,81 @@ class SR2ReaderFragment private constructor(
   }
 
   private fun onReaderMenuTOCSelected(): Boolean {
-    SR2UIThread.checkIsUIThread()
+    SR2UIThreadService.checkIsUIThread()
 
-    this.readerModel.publishViewEvent(SR2ReaderViewNavigationOpenTOC)
+    this.viewModel.openTOC()
     return true
   }
 
   private fun onReaderMenuSettingsSelected(): Boolean {
-    SR2UIThread.checkIsUIThread()
+    SR2UIThreadService.checkIsUIThread()
 
     this.openSettings()
     return true
   }
 
+  private fun openSettings() {
+    val activity = this.requireActivity()
+    val controllerNow = this.controller
+    if (controllerNow != null) {
+      SR2SettingsDialog.create(
+        brightness = SR2BrightnessService(activity),
+        context = activity,
+        controller = controllerNow
+      )
+    }
+  }
+
+  override fun onStart() {
+    super.onStart()
+    this.logger.debug("onStart")
+
+    this.controllerEvents =
+      this.viewModel.controllerEvents.subscribe(this::onControllerEvent)
+
+    this.showOrHideReadingUI(true)
+  }
+
+  override fun onStop() {
+    super.onStop()
+    this.logger.debug("onStop")
+
+    this.controllerEvents?.dispose()
+  }
+
+  override fun onDestroyView() {
+    super.onDestroyView()
+    this.logger.debug("onDestroyView")
+
+    this.bookEvents?.dispose()
+    this.controller?.viewDisconnect()
+  }
+
+  private fun onBookEvents(event: SR2ViewModelBookEvent) {
+    SR2UIThreadService.checkIsUIThread()
+
+    return when (event) {
+      is SR2ViewModelBookEvent.SR2ViewModelBookOpenFailed -> {
+        // Nothing to do
+      }
+      is SR2ViewModelBookEvent.SR2ViewModelBookOpened -> {
+        this.configureUiWithController(event.controller)
+        this.controller = event.controller
+      }
+    }
+  }
+
+  private fun configureUiWithController(controller: SR2ControllerType) {
+    controller.viewConnect(this.webView)
+    controller.submitCommand(SR2Command.Refresh)
+    this.toolbar.title = controller.bookMetadata.title
+    this.configureForTheme(controller.themeNow())
+    this.configureForPosition(controller.positionNow())
+    this.configureViewsLoading()
+  }
+
   private fun configureForTheme(theme: SR2Theme) {
-    SR2UIThread.checkIsUIThread()
+    SR2UIThreadService.checkIsUIThread()
 
     val background = theme.colorScheme.background()
     val foreground = theme.colorScheme.foreground()
@@ -175,96 +245,38 @@ class SR2ReaderFragment private constructor(
     this.positionPercentView.setTextColor(foreground)
   }
 
-  private fun openSettings() {
-    val activity = this.requireActivity()
-    SR2SettingsDialog.create(
-      brightness = SR2BrightnessService(activity),
-      context = activity,
-      controller = this.controller!!
-    )
-  }
-
-  override fun onStart() {
-    super.onStart()
-    this.logger.debug("onStart")
-
-    Preconditions.checkArgument(this.controller == null, "Controller must be null")
-
-    val activity =
-      this.requireActivity()
-
-    this.readerModel =
-      ViewModelProvider(activity, SR2ReaderViewModelFactory(this.parameters))
-        .get(SR2ReaderViewModel::class.java)
-
-    this.controllerEvents =
-      this.readerModel.controllerEvents.subscribe(this::onControllerEvent)
-    this.controllerLifecycleEvents =
-      this.readerModel.bookEvents.subscribe(this::onControllerLifecycleEvent)
-
-    /*
-     * Fetch or create a controller with the given EPUB loaded into it.
-     */
-
-    this.readerModel.createOrGet(
-      configuration = SR2ControllerConfiguration(
-        bookFile = this.parameters.bookFile,
-        bookId = this.parameters.bookId,
-        context = activity,
-        ioExecutor = this.readerModel.ioExecutor,
-        contentProtections = this.parameters.contentProtections,
-        theme = this.parameters.theme,
-        uiExecutor = SR2UIThread::runOnUIThread,
-        scrollingMode = this.parameters.scrollingMode,
-        pageNumberingMode = this.parameters.pageNumberingMode
-      )
-    )
-
-    this.showOrHideReadingUI(true)
-  }
-
-  override fun onStop() {
-    super.onStop()
-    this.logger.debug("onStop")
-
-    this.controllerEvents?.dispose()
-    this.controllerLifecycleEvents?.dispose()
-    this.controller?.viewDisconnect()
-    this.controller = null
-  }
-
-  private fun onReadingPositionChanged(event: SR2ReadingPositionChanged) {
-    val context = this.context ?: return
-    this.logger.debug("chapterTitle=${event.chapterTitle}")
-    if (event.chapterTitle == null) {
-      this.positionTitleView.visibility = GONE
+  private fun configureForPosition(position: SR2ReadingPosition) {
+    this.logger.debug("chapterTitle=${position.chapterTitle}")
+    if (position.chapterTitle == null) {
+      this.positionTitleView.visibility = View.GONE
     } else {
-      this.positionTitleView.text = event.chapterTitle
-      this.positionTitleView.visibility = VISIBLE
+      this.positionTitleView.text = position.chapterTitle
+      this.positionTitleView.visibility = View.VISIBLE
     }
 
-    if (event.currentPage == null || event.pageCount == null) {
-      this.positionPageView.visibility = GONE
+    if (position.currentPage == null || position.pageCount == null) {
+      this.positionPageView.visibility = View.GONE
     } else {
-      this.positionPageView.text = context.getString(R.string.progress_page, event.currentPage, event.pageCount)
-      this.positionPageView.visibility = VISIBLE
+      this.positionPageView.text = requireContext()
+        .getString(R.string.progress_page, position.currentPage, position.pageCount)
+      this.positionPageView.visibility = View.VISIBLE
     }
 
-    val bookProgressPercent = event.bookProgressPercent
+    val bookProgressPercent = position.bookProgressPercent
     if (bookProgressPercent == null) {
-      this.positionPercentView.visibility = GONE
-      this.progressView.visibility = GONE
+      this.positionPercentView.visibility = View.GONE
+      this.progressView.visibility = View.GONE
     } else {
       this.positionPercentView.text = this.getString(R.string.progress_percent, bookProgressPercent)
       this.progressView.apply { this.max = 100; this.progress = bookProgressPercent }
-      this.positionPercentView.visibility = VISIBLE
-      this.progressView.visibility = VISIBLE
+      this.positionPercentView.visibility = View.VISIBLE
+      this.progressView.visibility = View.VISIBLE
     }
-    this.reconfigureBookmarkMenuItem(event.locator)
+    this.reconfigureBookmarkMenuItem(position.locator)
   }
 
   private fun reconfigureBookmarkMenuItem(currentPosition: SR2Locator) {
-    SR2UIThread.checkIsUIThread()
+    SR2UIThreadService.checkIsUIThread()
 
     val controllerNow = this.controller
     if (controllerNow != null) {
@@ -292,36 +304,12 @@ class SR2ReaderFragment private constructor(
     return bookmark.type == EXPLICIT && location.compareTo(bookmark.locator) == 0
   }
 
-  private fun onControllerLifecycleEvent(event: SR2ViewModelBookEvent) {
-    SR2UIThread.checkIsUIThread()
-
-    return when (event) {
-      is SR2ViewModelBookOpened -> {
-        val newController = event.reference.controller
-        this.logger.debug(
-          "SR2LifecycleControllerBecameAvailable: {} first startup {}",
-          newController,
-          event.reference.isFirstStartup
-        )
-        this.controller = newController
-        newController.viewConnect(this.webView)
-        this.toolbar.title = newController.bookMetadata.title
-        this.readerModel.publishViewEvent(SR2ControllerBecameAvailable(event.reference))
-      }
-
-      is SR2ViewModelBookOpenFailed -> {
-        this.logger.error("SR2LifecycleControllerFailedToOpen: ", event.exception)
-        this.readerModel.publishViewEvent(SR2BookLoadingFailed(event.exception))
-      }
-    }
-  }
-
   private fun onControllerEvent(event: SR2Event) {
-    SR2UIThread.checkIsUIThread()
+    SR2UIThreadService.checkIsUIThread()
 
     return when (event) {
       is SR2ReadingPositionChanged -> {
-        this.onReadingPositionChanged(event)
+        this.configureForPosition(event.position)
       }
 
       SR2BookmarksLoaded,
@@ -343,17 +331,11 @@ class SR2ReaderFragment private constructor(
         this.showOrHideReadingUI(event.uiVisible)
       }
 
-      is SR2CommandExecutionStarted -> {
-        // Nothing
-      }
-
-      is SR2CommandExecutionRunningLong -> {
-        this.viewsShowLoading()
-      }
-
+      is SR2CommandExecutionStarted,
+      is SR2CommandExecutionRunningLong,
       is SR2CommandExecutionSucceeded,
       is SR2CommandExecutionFailed -> {
-        this.viewsHideLoading()
+        this.configureViewsLoading()
       }
 
       is SR2Event.SR2ExternalLinkSelected -> {
@@ -363,9 +345,16 @@ class SR2ReaderFragment private constructor(
     }
   }
 
-  private fun showOrHideReadingUI(uiVisible: Boolean) {
-    SR2UIThread.checkIsUIThread()
+  private fun onBookmarksChanged() {
+    SR2UIThreadService.checkIsUIThread()
 
+    val controllerNow = this.controller
+    if (controllerNow != null) {
+      this.reconfigureBookmarkMenuItem(controllerNow.positionNow().locator)
+    }
+  }
+
+  private fun showOrHideReadingUI(uiVisible: Boolean) {
     if (uiVisible) {
       this.progressContainer.visibility = View.VISIBLE
       this.toolbar.visibility = View.VISIBLE
@@ -375,9 +364,16 @@ class SR2ReaderFragment private constructor(
     }
   }
 
-  private fun viewsHideLoading() {
-    SR2UIThread.checkIsUIThread()
+  private fun configureViewsLoading() {
+    val loading = this.controller?.longRunningCommandNow() ?: true
+    if (loading) {
+      this.viewsShowLoading()
+    } else {
+      this.viewsHideLoading()
+    }
+  }
 
+  private fun viewsHideLoading() {
     if (this.webView.visibility != View.VISIBLE) {
       this.webView.visibility = View.VISIBLE
     }
@@ -387,22 +383,11 @@ class SR2ReaderFragment private constructor(
   }
 
   private fun viewsShowLoading() {
-    SR2UIThread.checkIsUIThread()
-
     if (this.webView.visibility != View.INVISIBLE) {
       this.webView.visibility = View.INVISIBLE
     }
     if (this.loadingView.visibility != View.VISIBLE) {
       this.loadingView.visibility = View.VISIBLE
-    }
-  }
-
-  private fun onBookmarksChanged() {
-    SR2UIThread.checkIsUIThread()
-
-    val controllerNow = this.controller
-    if (controllerNow != null) {
-      this.reconfigureBookmarkMenuItem(controllerNow.positionNow())
     }
   }
 }
