@@ -10,10 +10,6 @@ import io.reactivex.Observable
 import io.reactivex.disposables.CompositeDisposable
 import io.reactivex.subjects.PublishSubject
 import io.reactivex.subjects.Subject
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.joda.time.DateTime
 import org.librarysimplified.r2.api.SR2BookMetadata
@@ -37,8 +33,11 @@ import org.librarysimplified.r2.api.SR2Locator
 import org.librarysimplified.r2.api.SR2Locator.SR2LocatorChapterEnd
 import org.librarysimplified.r2.api.SR2Locator.SR2LocatorPercent
 import org.librarysimplified.r2.api.SR2PageNumberingMode
+import org.librarysimplified.r2.api.SR2ReadingPosition
 import org.librarysimplified.r2.api.SR2Theme
+import org.librarysimplified.r2.ui_thread.SR2UIThreadService
 import org.readium.r2.shared.fetcher.TransformingFetcher
+import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.publication.epub.EpubLayout.FIXED
 import org.readium.r2.shared.publication.epub.EpubLayout.REFLOWABLE
@@ -59,7 +58,6 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.annotation.concurrent.GuardedBy
-import kotlin.collections.List
 import kotlin.math.round
 
 /**
@@ -71,6 +69,7 @@ internal class SR2Controller private constructor(
   private val port: Int,
   private val server: Server,
   private val publication: Publication,
+  private val positionsByChapter: List<List<Locator>>,
   private val epubFileName: String,
   private val baseUrl: URI,
 ) : SR2ControllerType {
@@ -143,6 +142,10 @@ internal class SR2Controller private constructor(
         throw IOException("Publication has no chapters!")
       }
 
+      val positions = runBlocking {
+        publication.positionsByReadingOrder()
+      }
+
       this.logger.debug("publication title: {}", publication.metadata.title)
       val port = this.fetchUnusedHTTPPort()
       this.logger.debug("server port: {}", port)
@@ -171,6 +174,7 @@ internal class SR2Controller private constructor(
           baseUrl = baseUrl.toURI(),
           port = port,
           publication = publication,
+          positionsByChapter = positions,
           server = server
         )
       } catch (e: Exception) {
@@ -188,8 +192,6 @@ internal class SR2Controller private constructor(
     CompositeDisposable()
   private val logger =
     LoggerFactory.getLogger(SR2Controller::class.java)
-  private val coroutineScope: CoroutineScope =
-    CoroutineScope(Dispatchers.Main)
 
   /*
    * A single threaded command executor. The purpose of this executor is to accept
@@ -243,6 +245,8 @@ internal class SR2Controller private constructor(
   @Volatile
   private var uiVisible: Boolean = true
 
+  private var longRunningCommands = mutableSetOf<SR2CommandSubmission>()
+
   init {
     this.subscriptions.add(
       this.eventSubject.subscribe { event -> this.logger.trace("event: {}", event) }
@@ -253,9 +257,6 @@ internal class SR2Controller private constructor(
         .throttleLast(1, TimeUnit.SECONDS)
         .subscribe(this::updateBookmarkLastRead)
     )
-
-    // Pre-compute positions
-    runBlocking { publication.positionsByReadingOrder() }
   }
 
   private fun serverLocationOfTarget(
@@ -278,8 +279,9 @@ internal class SR2Controller private constructor(
   }
 
   private fun updateBookmarkLastRead(
-    position: SR2ReadingPositionChanged
+    event: SR2ReadingPositionChanged
   ) {
+    val position = event.position
 
     /*
      * This is pure paranoia; we only update the last-read location if the new position
@@ -361,6 +363,7 @@ internal class SR2Controller private constructor(
     command: SR2CommandSubmission,
     apiCommand: SR2Command.ThemeSet
   ): ListenableFuture<*> {
+    this.longRunningCommands.add(command)
     this.publishCommmandRunningLong(command)
     return this.executeThemeSet(this.waitForWebViewAvailability(), apiCommand.theme)
   }
@@ -584,6 +587,7 @@ internal class SR2Controller private constructor(
     val previousNode = this.currentTarget
 
     return try {
+      this.longRunningCommands.add(command)
       this.publishCommmandRunningLong(command)
 
       val target =
@@ -679,7 +683,7 @@ internal class SR2Controller private constructor(
     return result
   }
 
-  private suspend fun getCurrentPage(chapterProgress: Double): Pair<Int?, Int?> {
+  private fun getCurrentPage(chapterProgress: Double): Pair<Int?, Int?> {
     val currentNode = this.currentTarget.node
     if (currentNode !is SR2NavigationNode.SR2NavigationReadingOrderNode) {
       return null to null
@@ -692,8 +696,7 @@ internal class SR2Controller private constructor(
       }
 
     val indexInReadingOrder = currentNode.index
-    val positionsByChapter = this.publication.positionsByReadingOrder()
-    val currentChapterPositions = positionsByChapter[indexInReadingOrder]
+    val currentChapterPositions = this.positionsByChapter[indexInReadingOrder]
 
     val positionIndex =
       round(chapterProgress * currentChapterPositions.size).toInt()
@@ -707,7 +710,7 @@ internal class SR2Controller private constructor(
       }
       SR2PageNumberingMode.WHOLE_BOOK -> {
         val pageNumber = currentChapterPositions[positionIndex].locations.position!!
-        val pageCount = positionsByChapter.fold(0) { current, list -> current + list.size }
+        val pageCount = this.positionsByChapter.fold(0) { current, list -> current + list.size }
         pageNumber to pageCount
       }
     }
@@ -731,32 +734,16 @@ internal class SR2Controller private constructor(
       currentPage: Int,
       pageCount: Int
     ) {
-      this@SR2Controller.coroutineScope.launch {
-        this@SR2Controller.currentBookProgress =
-          this@SR2Controller.getBookProgress(chapterProgress)
-        this@SR2Controller.currentTargetProgress =
-          chapterProgress
+      this@SR2Controller.currentBookProgress =
+        this@SR2Controller.getBookProgress(chapterProgress)
+      this@SR2Controller.currentTargetProgress =
+        chapterProgress
 
-        val currentTarget =
-          this@SR2Controller.currentTarget
-        val targetHref =
-          currentTarget.node.navigationPoint.locator.chapterHref
-        val targetTitle =
-          currentTarget.node.title
-        val (currentPage, pageCount) =
-          this@SR2Controller.getCurrentPage(chapterProgress)
-
-        this@SR2Controller.eventSubject.onNext(
-          SR2ReadingPositionChanged(
-            chapterHref = targetHref,
-            chapterTitle = targetTitle,
-            chapterProgress = chapterProgress,
-            currentPage = currentPage,
-            pageCount = pageCount,
-            bookProgress = this@SR2Controller.currentBookProgress
-          )
-        )
-      }
+      val newPosition =
+        this@SR2Controller.positionNow()
+      this@SR2Controller.eventSubject.onNext(
+        SR2ReadingPositionChanged(newPosition)
+      )
     }
 
     @android.webkit.JavascriptInterface
@@ -845,6 +832,7 @@ internal class SR2Controller private constructor(
       try {
         try {
           future.get()
+          this.longRunningCommands.remove(command)
           this.publishCommmandSucceeded(command)
         } catch (e: ExecutionException) {
           throw e.cause!!
@@ -852,9 +840,11 @@ internal class SR2Controller private constructor(
       } catch (e: SR2WebViewDisconnectedException) {
         this.logger.debug("webview disconnected: could not execute {}", command)
         this.eventSubject.onNext(SR2Event.SR2Error.SR2WebViewInaccessible("No web view is connected"))
+        this.longRunningCommands.remove(command)
         this.publishCommmandFailed(command, e)
       } catch (e: Exception) {
         this.logger.error("{}: ", command, e)
+        this.longRunningCommands.remove(command)
         this.publishCommmandFailed(command, e)
       }
     }
@@ -892,10 +882,25 @@ internal class SR2Controller private constructor(
   override fun bookmarksNow(): List<SR2Bookmark> =
     this.bookmarks
 
-  override fun positionNow(): SR2Locator {
-    return SR2LocatorPercent(
-      this.currentTarget.node.navigationPoint.locator.chapterHref,
-      this.currentTargetProgress
+  override fun positionNow(): SR2ReadingPosition {
+    val currentTarget =
+      this@SR2Controller.currentTarget
+    val targetHref =
+      currentTarget.node.navigationPoint.locator.chapterHref
+    val targetTitle =
+      currentTarget.node.title
+    val chapterProgress =
+      this@SR2Controller.currentTargetProgress
+    val (currentPage, pageCount) =
+      this@SR2Controller.getCurrentPage(chapterProgress)
+
+    return SR2ReadingPosition(
+      chapterHref = targetHref,
+      chapterTitle = targetTitle,
+      chapterProgress = chapterProgress,
+      currentPage = currentPage,
+      pageCount = pageCount,
+      bookProgress = this@SR2Controller.currentBookProgress
     )
   }
 
@@ -907,6 +912,10 @@ internal class SR2Controller private constructor(
     return this.uiVisible
   }
 
+  override fun longRunningCommandNow(): Boolean {
+    return this.longRunningCommands.isNotEmpty()
+  }
+
   override fun viewConnect(webView: WebView) {
     this.logger.debug("viewConnect")
 
@@ -915,7 +924,7 @@ internal class SR2Controller private constructor(
         webView = webView,
         jsReceiver = this.JavascriptAPIReceiver(webView),
         commandQueue = this,
-        uiExecutor = this.configuration.uiExecutor,
+        uiExecutorFactory = SR2UIThreadService::createExecutor,
         scrollingMode = this.configuration.scrollingMode,
         layout = this.publication.metadata.presentation.layout ?: REFLOWABLE
       )
@@ -957,7 +966,6 @@ internal class SR2Controller private constructor(
 
   override fun close() {
     if (this.closed.compareAndSet(false, true)) {
-      this.coroutineScope.cancel()
 
       try {
         this.viewDisconnect()

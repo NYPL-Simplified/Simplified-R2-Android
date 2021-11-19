@@ -4,6 +4,7 @@ dependencies {
   api libs.kotlin.stdlib
   api libs.slf4j
   api libs.logback.android
+  implementation libs.rxandroid2
   implementation libs.nypl.theme
 
   api project(":org.librarysimplified.r2.api")

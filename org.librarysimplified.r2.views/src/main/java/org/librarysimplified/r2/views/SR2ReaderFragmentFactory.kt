@@ -6,7 +6,7 @@ import org.librarysimplified.r2.views.internal.SR2TOCBookmarksFragment
 import org.librarysimplified.r2.views.internal.SR2TOCChaptersFragment
 
 class SR2ReaderFragmentFactory(
-  private val parameters: SR2ReaderParameters
+  private var parameters: SR2ReaderParameters
 ) : FragmentFactory() {
 
   override fun instantiate(

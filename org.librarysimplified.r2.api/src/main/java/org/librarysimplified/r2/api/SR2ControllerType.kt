@@ -60,7 +60,7 @@ interface SR2ControllerType : Closeable, SR2ControllerCommandQueueType {
    * The current position of the reader.
    */
 
-  fun positionNow(): SR2Locator
+  fun positionNow(): SR2ReadingPosition
 
   /**
    * The most recently configured reader theme.
@@ -73,4 +73,10 @@ interface SR2ControllerType : Closeable, SR2ControllerCommandQueueType {
    */
 
   fun uiVisibleNow(): Boolean
+
+  /**
+   * @return `true` if a long-running command is being executed at the moment
+   */
+
+  fun longRunningCommandNow(): Boolean
 }
