@@ -43,8 +43,7 @@ internal class SR2TOCChapterAdapter(
     position: Int
   ) {
     val chapter = this.getItem(position)
-    holder.rootView.setOnClickListener {
-      holder.rootView.setOnClickListener(null)
+    holder.rootView.setOnClickListener(SR2TOC.reenableClickDelay) {
       this.onTOCEntrySelected.invoke(chapter)
     }
 

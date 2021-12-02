@@ -107,7 +107,7 @@ internal class SR2TOCBookmarksFragment private constructor(
     this.viewModel.openBookmark(bookmark)
     SR2UIThreadService.runOnUIThreadUnsafeDelayed(
       this.viewModel::closeToc,
-      SR2TOC.tocSelectionDelay()
+      SR2TOC.closeTocDelay
     )
   }
 
