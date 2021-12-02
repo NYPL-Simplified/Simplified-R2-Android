@@ -11,7 +11,7 @@ internal object SR2TOC {
 
   /**
    * The delay applied before enabling clicks on TOC items again. This purely exists to prevent
-   * click handlers to be executed multiple times.
+   * click handlers from being executed multiple times.
    */
 
   const val reenableClickDelay: Long = 1000L
