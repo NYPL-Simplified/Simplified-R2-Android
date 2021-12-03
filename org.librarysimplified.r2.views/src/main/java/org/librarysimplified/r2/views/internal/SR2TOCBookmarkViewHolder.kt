@@ -65,8 +65,7 @@ internal class SR2TOCBookmarkViewHolder(
       }
     }
 
-    this.rootView.setOnClickListener {
-      this.rootView.setOnClickListener(null)
+    this.rootView.setOnClickListener(SR2TOC.reenableClickDelay) {
       onBookmarkSelected.invoke(bookmark)
     }
     this.bookmarkTitleText.text = bookmark.title

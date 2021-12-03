@@ -99,7 +99,7 @@ internal class SR2TOCChaptersFragment private constructor(
     this.viewModel.openTocEntry(entry)
     SR2UIThreadService.runOnUIThreadUnsafeDelayed(
       this.viewModel::closeToc,
-      SR2TOC.tocSelectionDelay()
+      SR2TOC.closeTocDelay
     )
   }
 
