@@ -177,11 +177,11 @@ class SR2ReaderFragment private constructor(
     val activity = this.requireActivity()
     val controllerNow = this.controller
     if (controllerNow != null) {
-      SR2SettingsDialog.create(
+      SR2SettingsDialog(
         brightness = SR2BrightnessService(activity),
         context = activity,
         controller = controllerNow
-      )
+      ).show()
     }
   }
 
